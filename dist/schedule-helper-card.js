@@ -13,7 +13,7 @@
  * Custom elements are registered only where `customElements` exists.
  */
 
-export const VERSION = '2.0.2';
+export const VERSION = '2.0.3';
 
 // ---------------------------------------------------------------------------- week model
 
