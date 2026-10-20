@@ -2680,7 +2680,7 @@ class MembershipDialog {
     dlg.setAttribute('dir', this.card._dirAttr());
     dlg.innerHTML = `<div class="dlg-head"><button class="icon-btn" data-act="close" aria-label="${esc(t.close)}">${icon('close')}</button>
       <h3 id="dlg-title">${esc(t.automationsIn(t.modeName[this.mode]))}</h3></div>
-      <div class="dlg-body"><label class="search"><input type="search" id="q" placeholder=""${esc(t.searchAutomation)}" aria-label="${esc(t.searchAutomation)}"></label>
+      <div class="dlg-body"><label class="search"><input type="search" id="q" placeholder="${esc(t.searchAutomation)}" aria-label="${esc(t.searchAutomation)}"></label>
       <div class="muted small">${esc(t.selfExcluded)}</div><div class="checklist"></div></div>`;
     this.renderList();
     dlg.showModal();
