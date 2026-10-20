@@ -2831,13 +2831,24 @@ class EditorBase extends Base {
     el.querySelector('[data-act=makeDash]')?.addEventListener('click', () => this._createDash());
   }
 
+  // Empty lists mean "the default", except a whitelist (`entities: []` shows nothing) and `modes`. An empty string is
+  // dropped only by the field that was cleared (`_field`), so a YAML `title: ''` (no title) survives other edits.
   _emit(config) {
     for (const [k, v] of Object.entries(config)) {
-      if (v === '' || v === undefined || (Array.isArray(v) && !v.length && k !== 'modes')) delete config[k];
+      if (v === undefined || (Array.isArray(v) && !v.length && k !== 'modes' && k !== 'entities')) delete config[k];
     }
     this._config = config;
     this._emitted = JSON.stringify(config);
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
+  }
+
+  /** Text fields and selects: a cleared one goes back to its default. */
+  _fields(root) {
+    root.querySelectorAll('[data-key]').forEach((el) => el.addEventListener('change', () => {
+      const config = { ...this._config, [el.dataset.key]: el.value.trim() };
+      if (config[el.dataset.key] === '') delete config[el.dataset.key];
+      this._emit(config);
+    }));
   }
 
   _shell(inner) {
@@ -2886,7 +2897,7 @@ class ScheduleHelperCardEditor extends EditorBase {
         <div class="list">${schedules.map((e) => `<label class="chk row"><input type="checkbox" data-schedule="${esc(e.entity_id)}" ${shown(e.entity_id) ? 'checked' : ''}>
           <span>${esc(entityName(e))}</span><small dir="ltr">${esc(e.entity_id)}</small></label>`).join('') || `<div class="hint">${esc(t.noSchedules)}</div>`}</div>
       </section>`);
-    root.querySelectorAll('[data-key]').forEach((el) => el.addEventListener('change', () => this._emit({ ...this._config, [el.dataset.key]: el.value.trim() })));
+    this._fields(root);
     root.querySelectorAll('[data-bool]').forEach((el) => el.addEventListener('change', () => {
       const config = { ...this._config, [el.dataset.bool]: el.checked };
       if (el.dataset.bool === 'show_modes' && !el.checked) delete config.mode;
@@ -2895,8 +2906,13 @@ class ScheduleHelperCardEditor extends EditorBase {
       if (el.dataset.bool === 'show_modes') this._render();
     }));
     root.querySelector('.list').addEventListener('change', () => this._saveSchedules());
-    root.querySelector('.types').addEventListener('change', () => {
+    root.querySelector('.types').addEventListener('change', (e) => {
       const ticked = [...root.querySelectorAll('[data-domain]')].filter((b) => b.checked).map((b) => b.dataset.domain);
+      // No type at all would be stored as "all types": keep the last one ticked instead.
+      if (!ticked.length) {
+        e.target.checked = true;
+        return;
+      }
       const config = { ...this._config, device_domains: ticked };
       if (ticked.length === PICKABLE_DOMAINS.length) delete config.device_domains; // all is the default
       this._emit(config);
@@ -2936,7 +2952,7 @@ class ScheduleHelperShabbatCardEditor extends EditorBase {
         <h3>${esc(t.edModes)}</h3>
         ${MODES.map((m) => `<label class="chk"><input type="checkbox" data-mode="${esc(m)}" ${modes.includes(m) ? 'checked' : ''}><span>${esc(t.modeTitle(t.modeName[m]))}</span></label>`).join('')}
       </section>`);
-    root.querySelectorAll('[data-key]').forEach((el) => el.addEventListener('change', () => this._emit({ ...this._config, [el.dataset.key]: el.value.trim() })));
+    this._fields(root);
     root.querySelector('[data-bool]').addEventListener('change', (e) => {
       const config = { ...this._config, show_calendar: e.target.checked };
       if (e.target.checked) delete config.show_calendar;
