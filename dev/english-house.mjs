@@ -1,14 +1,15 @@
 // The synthetic house with English names, for the preview in English (?lang=en) and its screenshots.
 // Only display names change. The Beit marker and the mode labels (שבת / חג) are part of the data contract
-// and stay in Hebrew.
+// and stay in Hebrew. Schedule names are generic on purpose: the README screenshots show the Schedules card as a
+// scheduler for any home.
 
 const NAMES = {
-  'מאוורר סלון בשבת': 'Living room fan on Shabbat',
+  'מאוורר סלון בשבת': 'Living room fan timer',
   'תאורת מרפסת בערב': 'Balcony light in the evening',
-  'מזגן חדר שינה שבת': 'Bedroom AC Shabbat',
+  'מזגן חדר שינה שבת': 'Bedroom AC evenings',
   'מזגן סלון תצוגה': 'Living room AC display',
-  'מזגן סלון שבת': 'Living room AC Shabbat',
-  'מזגן ילדים חג': 'Kids AC chag',
+  'מזגן סלון שבת': 'Living room AC weekends',
+  'מזגן ילדים חג': 'Kids AC afternoons',
   'טמפרטורה סלון': 'Living room temperature',
   'תריס חדר שינה': 'Bedroom shutter',
   'מזגן חדר שינה': 'Bedroom AC',
@@ -34,7 +35,7 @@ const NAMES = {
   'מרפסת': 'Balcony',
   'מטבח': 'Kitchen',
   'סלון': 'Living room',
-  'פלטה': 'Hot plate',
+  'פלטה': 'Coffee machine',
   // Calendar values, as the integrations report them in English.
   'יום ראשון, ט״ו בטבת תשפ״ו': 'Sunday, 15 Tevet 5786',
   'ט״ו טבת תשפ״ו': '15 Tevet 5786',

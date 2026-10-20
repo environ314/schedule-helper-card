@@ -331,7 +331,7 @@ const CHECKS = [
     document.body.appendChild(card);
     card.hass = fake.snapshot();
     await sleep(800);
-    const chag = [...card.shadowRoot.querySelectorAll('.row')].find((r) => r.textContent.includes('Kids AC chag'));
+    const chag = [...card.shadowRoot.querySelectorAll('.row')].find((r) => r.textContent.includes('Kids AC afternoons'));
     must(chag?.querySelector('.state').textContent === 'Chag mode off', 'fallback: ' + chag?.querySelector('.state').textContent);
     card.remove();
     fake.callWS = callWS;
