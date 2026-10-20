@@ -70,7 +70,7 @@ const CHECKS = [
     must([...B().querySelectorAll('[data-automode]')].every((i) => i.disabled), 'automatic switches disabled');
     must(!B().querySelector('[data-act=members]'), 'no Choose automations');
   `],
-  ['create a schedule: device, action, hours, mode', '', `
+  ['create a schedule: device, action, hours, mode', 'schedules=' + encodeURIComponent('{"show_modes":true}'), `
     click(S().querySelector('[data-act=new]'), 'new');
     await sleep(200);
     click(D().querySelector('[data-act=pick]'), 'pick');
@@ -211,10 +211,15 @@ const CHECKS = [
     must(p.body.triggers[1].entity_id[0].startsWith('binary_sensor.jewish_calendar_issur_melacha'), 'ends with issur melacha');
     must(B().querySelector('[data-automode="חג"]').checked, 'shown on');
   `],
-  ['show_modes: false hides Shabbat and chag', 'schedules=' + encodeURIComponent('{"show_modes":false}'), `
+  ['by default the schedules card leaves Shabbat and chag out; show_modes: true shows them', '', `
     must(!S().querySelector('.list .chip'), 'no mode chips');
     await openEditor('schedule.bedroom_ac_shabbat');
     must(!D().querySelector('.seg'), 'no mode choice');
+  `],
+  ['show_modes: true shows the mode chips and the mode choice', 'schedules=' + encodeURIComponent('{"show_modes":true}'), `
+    must(S().querySelector('.list .chip'), 'mode chips');
+    await openEditor('schedule.bedroom_ac_shabbat');
+    must(D().querySelector('.seg'), 'mode choice');
   `],
   ['no height set: the card grows up to 700px, then scrolls', '', `
     const card = S().querySelector('ha-card');

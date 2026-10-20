@@ -909,7 +909,7 @@ const LEGACY_DASHBOARD_PATHS = ['beit-schedules'];
 export function dashboardConfig() {
   return {
     title: DASHBOARD.title,
-    views: [{ title: DASHBOARD.title, path: DASHBOARD.view, cards: [{ type: 'custom:schedule-helper-card' }, { type: 'custom:schedule-helper-shabbat-card' }] }],
+    views: [{ title: DASHBOARD.title, path: DASHBOARD.view, cards: [{ type: 'custom:schedule-helper-card', show_modes: true }, { type: 'custom:schedule-helper-shabbat-card' }] }],
   };
 }
 
@@ -1146,7 +1146,7 @@ export const STRINGS = {
     edTitle: 'כותרת',
     edShowAdd: 'כפתור "תזמון חדש"',
     edShowModes: 'הצגת שבת וחג',
-    edShowModesHint: 'כבו אם אין צורך במצבי שבת וחג: הכרטיס לא יציג אותם.',
+    edShowModesHint: 'הדליקו אם הבית שומר שבת וחג: הכרטיס יציג לכל תזמון את המצב שלו, ויאפשר לבחור אותו בעריכה.',
     edDeviceDomains: 'סוגי מכשירים לתזמון',
     edDeviceDomainsHint: 'רק הסוגים המסומנים יופיעו בבחירת מכשיר.',
     allTypes: 'הכול',
@@ -1285,7 +1285,7 @@ export const STRINGS = {
     edTitle: 'Title',
     edShowAdd: '"New schedule" button',
     edShowModes: 'Show Shabbat and chag (Jewish holidays)',
-    edShowModesHint: 'Turn off if you have no use for Shabbat and chag (Jewish holiday) modes: the card will not show them.',
+    edShowModesHint: 'Turn on if your home keeps Shabbat and chag (Jewish holidays): the card shows each schedule\'s mode and lets you choose it when editing.',
     edDeviceDomains: 'Device types to schedule',
     edDeviceDomainsHint: 'Only the ticked types appear when choosing a device.',
     allTypes: 'All',
@@ -1588,7 +1588,7 @@ class ScheduleHelperCard extends CardBase {
     if (config?.entities && !Array.isArray(config.entities)) throw new Error('entities must be a list');
     if (config?.hide_entities && !Array.isArray(config.hide_entities)) throw new Error('hide_entities must be a list');
     if (config?.device_domains && !Array.isArray(config.device_domains)) throw new Error('device_domains must be a list');
-    this._config = { show_add: true, show_modes: true, ...config };
+    this._config = { show_add: true, show_modes: false, ...config };
     this._sig = null;
     this._render();
   }
@@ -1727,7 +1727,7 @@ class ScheduleHelperCard extends CardBase {
     const editableWeek = this._weeks?.[id];
     const week = editableWeek || this._readWeeks?.[e.entity_id];
     const yaml = e.attributes?.editable === false || (this._weeks && !week);
-    const mode = this._config.show_modes !== false ? this._modeOf(e.entity_id, reg) : null;
+    const mode = this._config.show_modes === true ? this._modeOf(e.entity_id, reg) : null;
     const on = e.state === 'on';
     const next = e.attributes?.next_event ? new Date(e.attributes.next_event) : null;
     const editable = canEdit && !yaml && !!editableWeek;
@@ -1993,7 +1993,7 @@ class ScheduleEditor {
       <label class="field"><span>${esc(t.name)}</span>
         <input id="name" data-focus="name" value="${esc(this.week.name)}" autocomplete="off"
           ${this.isNew ? `placeholder="${esc(t.namePlaceholder)}"` : ''}></label>
-      ${this.card._config.show_modes === false ? '' : `<div class="section">
+      ${this.card._config.show_modes !== true ? '' : `<div class="section">
         <div class="label">${esc(t.type)}</div>
         <div class="seg" role="radiogroup" aria-label="${esc(t.type)}">
           ${seg.map(([m, label]) => `<button role="radio" aria-checked="${this.mode === m}" data-act="mode" data-mode="${esc(m ?? '')}"
@@ -3016,7 +3016,7 @@ class ScheduleHelperCardEditor extends EditorBase {
     if (!this._config) return;
     const t = this._t;
     const c = this._config;
-    const showModes = c.show_modes !== false;
+    const showModes = c.show_modes === true;
     const schedules = Object.values(this._hass?.states || {})
       .filter((e) => e.entity_id.startsWith('schedule.'))
       .sort((a, b) => entityName(a).localeCompare(entityName(b), langOf(this._hass)));
@@ -3052,7 +3052,8 @@ class ScheduleHelperCardEditor extends EditorBase {
     root.querySelectorAll('[data-bool]').forEach((el) => el.addEventListener('change', () => {
       const config = { ...this._config, [el.dataset.bool]: el.checked };
       if (el.dataset.bool === 'show_modes' && !el.checked) delete config.mode;
-      if (el.checked) delete config[el.dataset.bool]; // both default to true
+      // show_add is on by default, show_modes off: store only what differs.
+      if (el.checked === (el.dataset.bool === 'show_add')) delete config[el.dataset.bool];
       this._emit(config);
       if (el.dataset.bool === 'show_modes') this._render();
     }));
