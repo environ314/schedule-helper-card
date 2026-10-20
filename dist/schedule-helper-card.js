@@ -2982,7 +2982,7 @@ if (typeof customElements !== 'undefined') {
       type: 'schedule-helper-card',
       name: 'Schedule Helper Card',
       description: 'Weekly schedules for any device, in any home; optional Shabbat and Jewish holiday modes. תזמון שבועי לכל מכשיר.',
-      preview: false,
+      preview: true,
     });
   }
   if (!window.customCards.some((c) => c.type === 'schedule-helper-shabbat-card')) {
@@ -2990,7 +2990,7 @@ if (typeof customElements !== 'undefined') {
       type: 'schedule-helper-shabbat-card',
       name: 'Schedule Helper — Shabbat & Jewish holidays (שבת וחג)',
       description: 'Optional: Shabbat and Jewish holiday (chag) modes, automatic Shabbat and chag, and the times. מצבי שבת וחג.',
-      preview: false,
+      preview: true,
     });
   }
 }
