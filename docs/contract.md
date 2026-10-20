@@ -94,6 +94,21 @@ Written with `POST /api/config/automation/config/<id>`. From a card this is `has
     `weekday: [fri]` condition stays. Changing the start replaces only that trigger (and the description while it is
     still the one the card wrote).
   - When Shabbat ends (see §4), it waits until every `schedule.*` carrying the label is off (6 h timeout), then turns the label off with `stop_actions: false`.
+  - **Catch-up after a restart** *(card 2.0.2; the Beit app does not write it yet, to be aligned)*. A restart drops a
+    run that is waiting for the schedules, and an end that comes while HA is down never fires, so the mode would stay
+    on all week. A third trigger `{trigger: "homeassistant", event: "start", id: "ha_start"}` and a third `choose`
+    branch for it:
+    1. `wait_template` until each calendar entity below is neither `unknown` nor `unavailable` (10 min, then give up);
+    2. a template `condition` that the mode is over and not about to begin:
+       - Jewish Calendar: `issur_melacha_in_effect*` is `off` and `erev_shabbat_hag*` is `off`;
+       - otherwise, Shabbat only: `motzei_shabbat_hag*` is `on`, or Hebcal's `is_shabbat` is `False`;
+       - Shabbat also `now().weekday() != 4`: on a Friday the mode may already be on from noon;
+    3. the same wait for the schedules and the same turn-off as the end branch.
+
+    A mode switched on by hand on a weekday is therefore switched off again by a restart while the automatic mode is on.
+  - **Upgrading.** An automatic automation without the catch-up that carries the marker and is otherwise exactly what
+    the card writes (same start and end trigger) is POSTed again with it, when an admin opens the card. One changed by
+    hand is left alone.
   - The card creates it on request, and **recognises** an existing one, so there is never a second: by its alias, or, if
     renamed, as an automation found by `search/related` for the label that carries the marker and an `erev_*` trigger.
   - Switching it off **disables** it (`automation.turn_off`). The card never deletes it, so changes the user made to it survive.

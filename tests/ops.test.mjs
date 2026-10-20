@@ -531,3 +531,62 @@ test('a dashboard whose content cannot be saved is removed again', async () => {
   await assert.rejects(createDashboard(hass), /boom/);
   assert.equal(await findDashboard(hass), null);
 });
+
+import { modeOutsideNow, upgradeAuto, CATCH_UP_ID } from '../dist/schedule-helper-card.js';
+
+const withStates = (hass, patch) => {
+  for (const [id, state] of Object.entries(patch)) hass._states[id] = { ...hass.states[id], state };
+};
+
+test('the automatic automation catches up after a restart: once the calendar is readable, a mode that is over goes off', () => {
+  const cal = calOf(fixtures.states);
+  for (const mode of ['שבת', 'חג']) {
+    const a = buildAutoModeAutomation({ id: '1', mode, labelId: 'l', cal });
+    assert.deepEqual(a.triggers[2], { trigger: 'homeassistant', event: 'start', id: CATCH_UP_ID });
+    const [wait, outside, waitForSchedules, turnOff] = a.actions[0].choose[2].sequence;
+    assert.match(wait.wait_template, /not in \['unknown', 'unavailable'\]/);
+    assert.equal(wait.continue_on_timeout, false);
+    assert.match(outside.value_template, /is_state\('binary_sensor\.jewish_calendar_issur_melacha_in_effect_2', 'off'\)/);
+    assert.match(outside.value_template, /is_state\('binary_sensor\.jewish_calendar_erev_shabbat_hag_2', 'off'\)/);
+    assert.equal(/weekday\(\) != 4/.test(outside.value_template), mode === 'שבת', 'Friday is left alone for Shabbat');
+    assert.deepEqual(waitForSchedules, a.actions[0].choose[1].sequence[0]);
+    assert.deepEqual(turnOff, a.actions[0].choose[1].sequence[1]);
+  }
+  const hebcal = calOf(fixtures.states.filter((s) => !s.entity_id.includes('jewish_calendar')));
+  const h = buildAutoModeAutomation({ id: '1', mode: 'שבת', labelId: 'l', cal: hebcal });
+  assert.equal(h.actions[0].choose[2].sequence[1].value_template, "{{ is_state('sensor.hebcal_is_shabbat', 'False') and now().weekday() != 4 }}");
+  // As written before 2.0.2.
+  assert.equal(buildAutoModeAutomation({ id: '1', mode: 'שבת', labelId: 'l', cal, catchUp: false }).triggers.length, 2);
+});
+
+test('modeOutsideNow: off by the calendar, not on a Friday for Shabbat, unknown without a readable calendar', () => {
+  const states = Object.fromEntries(fixtures.states.map((s) => [s.entity_id, s]));
+  const sunday = new Date(2026, 0, 4, 9);
+  const friday = new Date(2026, 0, 9, 9);
+  assert.equal(modeOutsideNow('חג', states, sunday), true);
+  assert.equal(modeOutsideNow('שבת', states, sunday), true);
+  assert.equal(modeOutsideNow('שבת', states, friday), false);
+  const issur = 'binary_sensor.jewish_calendar_issur_melacha_in_effect_2';
+  assert.equal(modeOutsideNow('חג', { ...states, [issur]: { ...states[issur], state: 'on' } }, sunday), false);
+  assert.equal(modeOutsideNow('חג', { ...states, [issur]: { ...states[issur], state: 'unavailable' } }, sunday), null);
+  assert.equal(modeOutsideNow('חג', {}, sunday), null);
+});
+
+test('upgradeAuto adds the catch-up to an untouched automatic automation, and leaves an edited one alone', async () => {
+  const cal = calOf(fixtures.states);
+  const old = buildAutoModeAutomation({ id: '5', mode: 'שבת', labelId: 'shbt', start: { at: '13:00' }, cal, catchUp: false });
+  const houseWith = (config) => new FakeHass({
+    ...fixtures,
+    states: [...fixtures.states, { entity_id: 'automation.auto', state: 'off', attributes: { id: '5', friendly_name: AUTO_ALIAS['שבת'] }, last_changed: '', last_updated: '' }],
+    automation_configs: { ...fixtures.automation_configs, 'automation.auto': config },
+  }, { now: SUNDAY_9AM });
+  let hass = houseWith(old);
+  assert.equal(await upgradeAuto(hass, 'שבת', await findAuto(hass, 'שבת')), true);
+  const up = (await findAuto(hass, 'שבת')).config;
+  assert.deepEqual(up, buildAutoModeAutomation({ id: '5', mode: 'שבת', labelId: 'shbt', start: { at: '13:00' }, cal }));
+  assert.equal(hass.states['automation.auto'].state, 'off', 'a disabled one stays disabled');
+  assert.equal(await upgradeAuto(hass, 'שבת', await findAuto(hass, 'שבת')), false, 'once');
+  hass = houseWith({ ...old, mode: 'restart' });
+  assert.equal(await upgradeAuto(hass, 'שבת', await findAuto(hass, 'שבת')), false, 'edited by hand');
+  assert.equal(hass.calls.filter((c) => c.method === 'POST').length, 0);
+});

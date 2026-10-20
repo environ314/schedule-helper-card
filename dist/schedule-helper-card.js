@@ -326,6 +326,41 @@ export function autoEndTrigger(mode, cal) {
   return cal?.issur ? { trigger: 'state', entity_id: [cal.issur], from: 'on', to: 'off', id: END_ID['חג'] } : null;
 }
 
+/**
+ * The calendar facts that say a mode is over and not about to begin: no issur melacha, not erev, and for Shabbat not a
+ * Friday (the mode may switch on at noon, hours before Jewish Calendar's erev or Hebcal's Shabbat). Each fact is
+ * `[entity, state]`; `friday` says whether Friday must be excluded too. Null when the house has no calendar to ask.
+ */
+function outsideFacts(mode, cal) {
+  const facts = [];
+  if (cal?.issur) {
+    facts.push([cal.issur, 'off']);
+    if (cal.erev) facts.push([cal.erev, 'off']);
+  } else if (mode === 'שבת' && cal?.motzei) facts.push([cal.motzei, 'on']);
+  else if (mode === 'שבת' && cal?.hebcal?.isShabbat) facts.push([cal.hebcal.isShabbat, 'False']);
+  if (!facts.length) return null;
+  return { facts, friday: mode === 'שבת' };
+}
+
+/** The same check as a template, for the automatic automation's catch-up after a restart. */
+function outsideTemplate(mode, cal) {
+  const o = outsideFacts(mode, cal);
+  if (!o) return null;
+  const parts = o.facts.map(([id, st]) => `is_state('${id}', '${st}')`);
+  if (o.friday) parts.push('now().weekday() != 4');
+  return `{{ ${parts.join(' and ')} }}`;
+}
+
+/**
+ * Whether a mode should be off right now by the calendar: true (outside it), false (in it, or about to begin), or null
+ * when the house has no calendar or its sensors are not readable (e.g. right after a restart).
+ */
+export function modeOutsideNow(mode, states, now = new Date()) {
+  const o = outsideFacts(mode, findCalendar(states));
+  if (!o || o.facts.some(([id]) => !usable(states?.[id]))) return null;
+  return o.facts.every(([id, st]) => states[id].state === st) && !(o.friday && now.getDay() === 5);
+}
+
 /** Whether this house can run the automatic mode at all. */
 export function autoAvailable(mode, cal) {
   if (mode === 'שבת') return !!autoShabbatEndTrigger(cal);
@@ -380,19 +415,47 @@ function autoDescription(mode, start, endTrigger) {
       `ומכבה אותן בצאת החג לפי Jewish Calendar, אחרי שכל תזמוני החג הסתיימו. חג שחל בשבת מכוסה במצב שבת.`;
 }
 
-/** The one automatic automation of a mode (contract §3). */
-export function buildAutoModeAutomation({ id, mode, labelId, start = DEFAULT_AUTO_START, cal, startTrigger, endTrigger }) {
+export const CATCH_UP_ID = 'ha_start';
+
+/**
+ * The one automatic automation of a mode (contract §3). `catchUp: false` builds it as the card wrote it before 2.0.2,
+ * without the restart catch-up (to recognise one that can be upgraded).
+ */
+export function buildAutoModeAutomation({ id, mode, labelId, start = DEFAULT_AUTO_START, cal, startTrigger, endTrigger, catchUp = true }) {
   const on = startTrigger ?? autoStartTrigger(mode, start, cal);
   const off = endTrigger ?? autoEndTrigger(mode, cal);
   const target = { label_id: labelId };
   const onConditions = mode === 'שבת'
     ? [{ condition: 'time', weekday: ['fri'] }]
     : [{ condition: 'template', value_template: erevChagTemplate(cal) }];
+  const waitForSchedules = {
+    wait_template: `{{ label_entities('${labelId}') | select('match', 'schedule\\\\.') | select('is_state', 'on') | list | count == 0 }}`,
+    timeout: '06:00:00',
+    continue_on_timeout: true,
+  };
+  const turnOff = { action: 'automation.turn_off', target, data: { stop_actions: false } };
+  // A restart drops a run waiting for the schedules to end, and an end that came while HA was down never fires: on
+  // start, once the calendar can be read, a mode that is over is switched off the same way.
+  const outside = catchUp ? outsideTemplate(mode, cal) : null;
+  const facts = outside ? outsideFacts(mode, cal).facts.map(([e]) => e) : [];
+  const catchUpBranch = outside && {
+    conditions: [{ condition: 'trigger', id: CATCH_UP_ID }],
+    sequence: [
+      {
+        wait_template: `{{ ${facts.map((e) => `states('${e}') not in ['unknown', 'unavailable']`).join(' and ')} }}`,
+        timeout: '00:10:00',
+        continue_on_timeout: false,
+      },
+      { condition: 'template', value_template: outside },
+      waitForSchedules,
+      turnOff,
+    ],
+  };
   return {
     id,
     alias: AUTO_ALIAS[mode],
     description: autoDescription(mode, start, off),
-    triggers: [on, off],
+    triggers: [on, off, ...(catchUpBranch ? [{ trigger: 'homeassistant', event: 'start', id: CATCH_UP_ID }] : [])],
     conditions: [],
     actions: [
       {
@@ -403,15 +466,9 @@ export function buildAutoModeAutomation({ id, mode, labelId, start = DEFAULT_AUT
           },
           {
             conditions: [{ condition: 'trigger', id: off.id }],
-            sequence: [
-              {
-                wait_template: `{{ label_entities('${labelId}') | select('match', 'schedule\\\\.') | select('is_state', 'on') | list | count == 0 }}`,
-                timeout: '06:00:00',
-                continue_on_timeout: true,
-              },
-              { action: 'automation.turn_off', target, data: { stop_actions: false } },
-            ],
+            sequence: [waitForSchedules, turnOff],
           },
+          ...(catchUpBranch ? [catchUpBranch] : []),
         ],
       },
     ],
@@ -806,6 +863,28 @@ export async function setAutoStart(hass, mode, start) {
   const next = { ...cfg, triggers: cfg.triggers.map((x, i) => (i === index ? trigger : x)) };
   if (end && old && cfg.description === autoDescription(mode, old, end)) next.description = autoDescription(mode, start, end);
   if (sameConfig(next, cfg)) return false;
+  await hass.callApi('POST', `config/automation/config/${cfg.id}`, next);
+  return true;
+}
+
+/**
+ * Adds the restart catch-up to an automatic automation written before 2.0.2. Only when it carries the marker and is
+ * still exactly what the card wrote then (start and end as they are now): one changed by hand is left alone.
+ * True when it was rewritten.
+ */
+export async function upgradeAuto(hass, mode, existing) {
+  const cfg = existing?.config;
+  if (!existing?.ours || cfg?.id == null || (cfg.triggers || []).some((x) => x?.id === CATCH_UP_ID)) return false;
+  const startTrigger = (cfg.triggers || []).find((x) => x?.id === START_ID[mode]);
+  const endTrigger = (cfg.triggers || []).find((x) => x?.id === END_ID[mode]);
+  const labelId = cfg.actions?.[0]?.choose?.[0]?.sequence?.[0]?.target?.label_id;
+  const start = parseAutoStart(cfg);
+  if (!startTrigger || !endTrigger || !labelId || !start) return false;
+  const cal = findCalendar(hass.states);
+  const args = { id: cfg.id, mode, labelId, start, cal, startTrigger, endTrigger };
+  if (!sameConfig(buildAutoModeAutomation({ ...args, catchUp: false }), cfg)) return false;
+  const next = buildAutoModeAutomation(args);
+  if (!(next.triggers || []).some((x) => x?.id === CATCH_UP_ID)) return false; // no calendar to check against
   await hass.callApi('POST', `config/automation/config/${cfg.id}`, next);
   return true;
 }
@@ -2478,7 +2557,16 @@ class ScheduleHelperShabbatCard extends CardBase {
       if (!this._isAdmin) {
         const hit = Object.values(this._hass.states).find((e) => e.entity_id.startsWith('automation.') && e.attributes?.friendly_name === AUTO_ALIAS[mode]);
         auto[mode] = hit ? { entityId: hit.entity_id, ours: true, config: null } : null;
-      } else auto[mode] = await findAuto(this._h, mode).catch(() => null);
+      } else {
+        auto[mode] = await findAuto(this._h, mode).catch(() => null);
+        // An automatic automation from before 2.0.2 gets the restart catch-up, once, if nobody changed it by hand.
+        this._upgraded ??= new Set();
+        if (auto[mode] && !this._upgraded.has(mode)) {
+          this._upgraded.add(mode);
+          const done = await upgradeAuto(this._h, mode, auto[mode]).catch((err) => console.warn('schedule-helper-card: upgrade', err));
+          if (done) auto[mode] = await findAuto(this._h, mode).catch(() => auto[mode]);
+        }
+      }
     }
     this._auto = auto;
     this._autoLoaded = true;

@@ -265,7 +265,8 @@ A mode is a Home Assistant **label**, named `שבת` or `חג`.
 - **Automatic Shabbat** (optional, one switch on the card). Creates one automation that:
   1. turns the Shabbat mode on every **Friday at 12:00**, before typical Friday-afternoon schedules begin. You can pick
      another time, or a number of hours before candle lighting (with Jewish Calendar);
-  2. turns it off **after Shabbat ends**, but only once every Shabbat schedule has finished.
+  2. turns it off **after Shabbat ends**, but only once every Shabbat schedule has finished. If Home Assistant was
+     restarted or down at that moment, it does this when Home Assistant starts again.
 - **Automatic chag** (optional, needs the core Jewish Calendar integration). The same for chag mode: on erev chag at
   the time you choose, off after the chag ends. A chag that falls on Shabbat is covered by Shabbat mode, since nothing
   in the calendar says so a day ahead.
