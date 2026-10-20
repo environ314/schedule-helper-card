@@ -361,6 +361,9 @@ export function modeOutsideNow(mode, states, now = new Date()) {
   return o.facts.every(([id, st]) => states[id].state === st) && !(o.friday && now.getDay() === 5);
 }
 
+/** Home Assistant's own "add an integration" page for Jewish Calendar (the path my.home-assistant.io redirects to). */
+export const ADD_JEWISH_CALENDAR = '/_my_redirect/config_flow_start?domain=jewish_calendar';
+
 /** Whether this house can run the automatic mode at all. */
 export function autoAvailable(mode, cal) {
   if (mode === 'שבת') return !!autoShabbatEndTrigger(cal);
@@ -1040,6 +1043,7 @@ export const STRINGS = {
     errOverlap: (day) => `ביום ${day}: יש טווחים חופפים`,
     errNoCalendar: 'לא נמצא לוח שנה עברי (Jewish Calendar או Hebcal) — אין לפי מה לדעת מתי השבת יוצאת',
     errNoJewishCalendar: 'חג אוטומטי צריך את אינטגרציית Jewish Calendar (של Home Assistant) — Hebcal לא אמין לחגים',
+    addJewishCalendar: 'הוספת Jewish Calendar ←',
     errNoCandleSensor: 'לזמן יחסי להדלקת נרות צריך את אינטגרציית Jewish Calendar',
     schedules: 'תזמונים',
     newSchedule: 'תזמון חדש',
@@ -1187,6 +1191,7 @@ export const STRINGS = {
     errOverlap: (day) => `${day}: ranges overlap`,
     errNoCalendar: 'No Jewish calendar found (Jewish Calendar or Hebcal), so there is no way to tell when Shabbat ends',
     errNoJewishCalendar: "Automatic chag needs Home Assistant's Jewish Calendar integration; Hebcal is not reliable for chagim",
+    addJewishCalendar: 'Add Jewish Calendar →',
     errNoCandleSensor: 'A start relative to candle lighting needs the Jewish Calendar integration',
     schedules: 'Schedules',
     newSchedule: 'New schedule',
@@ -2551,6 +2556,7 @@ const EDITOR_STYLE = `
   .section { display: flex; flex-direction: column; gap: 8px; }
   .row-between { display: flex; align-items: center; justify-content: space-between; }
   .link { font: inherit; font-size: 13px; color: var(--primary-color); background: none; border: 0; padding: 0; cursor: pointer; }
+  a.link { text-decoration: none; display: inline-block; margin-top: 4px; }
   .seg { display: inline-flex; align-self: flex-start; border: 1px solid var(--divider-color); border-radius: 18px; overflow: hidden; }
   .seg button { display: inline-flex; gap: 4px; align-items: center; padding: 7px 16px; border: 0; background: transparent; cursor: pointer; font-size: 14px; }
   .seg button + button { border-inline-start: 1px solid var(--divider-color); }
@@ -2856,9 +2862,13 @@ class ScheduleHelperShabbatCard extends CardBase {
     const canEditStart = this._isAdmin && this._autoLoaded && !unavailable && (!auto || (auto.ours && parseAutoStart(auto.config)));
     const hint = unavailable ? (mode === 'שבת' ? t.errNoCalendar : t.errNoJewishCalendar)
       : auto && !auto.ours ? t.autoShabbatNotOurs : t.autoHint(mode);
+    // Jewish Calendar is part of Home Assistant, but has to be added once; an admin can do it from here.
+    const addCalendar = unavailable && this._isAdmin && !cal?.issur
+      ? `<div class="small"><a class="link" href="${ADD_JEWISH_CALENDAR}" target="_top">${esc(t.addJewishCalendar)}</a></div>` : '';
     return `<div class="auto">
       <div class="grow"><div>${esc(t.autoTitle[mode])}</div>
         <div class="muted small">${esc(hint)}</div>
+        ${addCalendar}
         ${canEditStart && this._startEdit?.mode !== mode ? `<div class="small start-line">${esc(t.startLabel)}: ${esc(startText(start, this._lang))} ·
           <button class="link" data-act="startEdit" data-mode="${esc(mode)}">${esc(t.change)}</button></div>` : ''}</div>
       ${switchHtml({ checked: on, disabled, label: t.autoTitle[mode], attrs: `data-automode="${esc(mode)}" id="auto-${esc(mode)}"` })}
