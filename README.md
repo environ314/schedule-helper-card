@@ -302,8 +302,9 @@ every user.
 ## FAQ
 
 **Can I edit a schedule the card created in Home Assistant's own editor?**
-Yes. Both the helper and the automation are standard objects. If you rewrite the automation by hand, the card treats
-it as yours and will not delete it.
+Yes. Both the helper and the automation are standard objects. If you rewrite the automation by hand, the card no
+longer rewrites it when you change the schedule. Deleting the schedule from the card still deletes the automation while
+its description carries the card's marker (`נוצר באפליקציית Beit`); remove that text from the description to keep it.
 
 **What happens to my existing schedules and automations?**
 The card lists your existing UI-managed schedule helpers and lets you edit their hours. It never modifies or deletes
