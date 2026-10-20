@@ -1795,6 +1795,7 @@ class ScheduleEditor {
   back() {
     if (this.saving) return;
     if (this.view !== 'main') {
+      if (this.view === 'confirmDelete') this.error = ''; // a failed delete is not the main view's business
       this.view = 'main';
       this.render();
     } else if (this.rangeEdit || this.copyFrom) {
@@ -1830,7 +1831,10 @@ class ScheduleEditor {
          <button class="btn primary" data-act="save" ${this.saving ? 'disabled' : ''}>${this.saving ? '<span class="spinner"></span>' : ''}${esc(t.save)}</button>`
       : `<button class="icon-btn" data-act="back" aria-label="${esc(t.back)}" data-focus="back">${icon('back', 'flip')}</button><h3 id="dlg-title">${esc(this.view === 'picker' ? title : t.deleteQ)}</h3>`;
     const body = this.view === 'picker' ? this.pickerHtml() : this.view === 'confirmDelete' ? this.confirmHtml() : this.mainHtml();
+    // The card's toast lives in the dialog while it is open (see _toast): keep it across the re-render.
+    const toast = [...this.dlg.children].find((c) => c.classList.contains('toast'));
     this.dlg.innerHTML = `<div class="dlg-head">${head}</div><div class="dlg-body">${body}</div>`;
+    if (toast) this.dlg.appendChild(toast);
     const again = this.dlg.querySelector('.dlg-body');
     if (this.view === 'main') again.scrollTop = scrollTop;
     // A panel that just opened (or an error in it) takes the focus and scrolls into view with its day.
