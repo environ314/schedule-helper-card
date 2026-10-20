@@ -1382,8 +1382,11 @@ const BASE_STYLE = `
   .dot.on { background: var(--success-color, #43a047); }
   /* a switch built from a checkbox */
   .switch { position: relative; display: inline-block; width: 36px; height: 20px; flex: none; }
-  /* The box reaches past the drawn switch: 36x20 is too small a target for a finger. */
-  .switch input { position: absolute; inset: -8px; opacity: 0; margin: 0; cursor: pointer; z-index: 1; -webkit-tap-highlight-color: transparent; }
+  /* The box reaches past the drawn switch: 36x20 is too small a target for a finger. Sized explicitly: Safari keeps a
+     checkbox at its own 12px whatever its insets, which left it beside the switch instead of over it. */
+  .switch input { position: absolute; top: -8px; left: -8px; width: calc(100% + 16px); height: calc(100% + 16px);
+    -webkit-appearance: none; appearance: none; opacity: 0; margin: 0; padding: 0; border: 0; cursor: pointer; z-index: 1;
+    -webkit-tap-highlight-color: transparent; }
   .switch .track { position: absolute; inset: 3px 0; border-radius: 7px; background: var(--switch-unchecked-track-color, #9e9e9e); opacity: .5; transition: .15s; }
   .switch .knob { position: absolute; top: 0; inset-inline-start: 0; width: 20px; height: 20px; border-radius: 50%;
     background: var(--switch-unchecked-button-color, #fafafa); box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: .15s; }
