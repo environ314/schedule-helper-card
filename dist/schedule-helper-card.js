@@ -964,6 +964,8 @@ export const STRINGS = {
     at: (when, time) => `${when} ב-${time}`,
     yaml: 'מוגדר ב-YAML — לקריאה בלבד',
     noSchedules: 'אין תזמונים להצגה',
+    loadSchedulesFailed: 'לא הצלחתי לטעון את התזמונים לעריכה.',
+    retry: 'נסה שוב',
     loading: 'טוען…',
     readOnly: 'צפייה בלבד — רק מנהל יכול לערוך',
     modeName: { שבת: 'שבת', חג: 'חג' },
@@ -1101,6 +1103,8 @@ export const STRINGS = {
     at: (when, time) => `${when} at ${time}`,
     yaml: 'Defined in YAML — read only',
     noSchedules: 'No schedules to show',
+    loadSchedulesFailed: 'Could not load the schedules for editing.',
+    retry: 'Try again',
     loading: 'Loading…',
     readOnly: 'View only — only an administrator can edit',
     modeName: { שבת: 'Shabbat', חג: 'Chag' },
@@ -1508,6 +1512,7 @@ class ScheduleHelperCard extends CardBase {
       // schedule/list is an admin command, and the only source of what can be edited.
       try {
         this._weeks = await listSchedules(this._h);
+        this._weeksError = null;
       } catch (err) {
         this._weeks ??= {};
         this._weeksError = errorText(err);
@@ -1577,6 +1582,8 @@ class ScheduleHelperCard extends CardBase {
         ${canEdit && this._config.show_add !== false ? `<button class="btn primary" data-act="new">${esc(t.newSchedule)}</button>` : ''}
       </div>`, `
       ${canEdit ? '' : `<div class="hint">${esc(t.readOnly)}</div>`}
+      ${canEdit && this._weeksError ? `<div class="warn load-error" role="alert"><span class="grow">${esc(t.loadSchedulesFailed)} ${esc(this._weeksError)}</span>
+        <button class="btn" data-act="retry">${esc(t.retry)}</button></div>` : ''}
       <div class="list" role="list">${rows || `<div class="hint">${esc(this._weeks || !canEdit ? t.noSchedules : t.loading)}</div>`}</div>`);
   }
 
@@ -1610,6 +1617,10 @@ class ScheduleHelperCard extends CardBase {
   _onClick(e) {
     const act = e.target.closest?.('[data-act]')?.dataset.act;
     if (act === 'new') return this._openEditor(null);
+    if (act === 'retry') {
+      this._weeksError = null;
+      return this._loadWeeks();
+    }
     const row = e.target.closest?.('.row[data-id]');
     if (row) this._openEditor(row.dataset.id);
   }
@@ -1621,8 +1632,10 @@ class ScheduleHelperCard extends CardBase {
       this._opening = true;
       try {
         this._weeks = await listSchedules(this._h);
-      } catch {
-        /* the cached copy will do */
+        this._weeksError = null;
+      } catch (err) {
+        // The cached copy will do; without one the row can't open, and the card says why.
+        if (!this._weeks?.[this._idOf(entityId)]) this._weeksError = errorText(err);
       } finally {
         this._opening = false;
       }
@@ -2316,6 +2329,7 @@ function weekBarsHtml(week, lang) {
 
 const SCHEDULE_STYLE = `
   .list { padding: 0 8px 8px; }
+  .load-error { margin: 0 16px 8px; align-items: center; }
   .row { padding: 10px 8px; border-top: 1px solid var(--divider-color); border-radius: 8px; }
   .row:first-child { border-top: 0; }
   .row.editable { cursor: pointer; }
