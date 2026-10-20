@@ -247,7 +247,7 @@ show_calendar: true        # optional
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `title` | string | *Shabbat & chag* | Card title. The default follows the user's language (`שבת וחג` in Hebrew). |
+| `title` | string | *Shabbat & chag (Jewish holidays)* | Card title. The default follows the user's language (`שבת וחג` in Hebrew). |
 | `modes` | list | `[שבת, חג]` | Which modes to show. |
 | `height` | string | auto | A fixed height, such as `500px` or `60vh`. The title stays put and the rest scrolls inside the card. |
 | `show_calendar` | boolean | `true` | Show candle lighting, havdalah, the parasha and the holiday. |
