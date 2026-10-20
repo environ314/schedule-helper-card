@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS"></a>
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Default-41BDF5.svg" alt="HACS Default"></a>
   <a href="https://github.com/yybd/schedule-helper-card/releases"><img src="https://img.shields.io/github/v/release/yybd/schedule-helper-card" alt="Release"></a>
   <a href="https://github.com/yybd/schedule-helper-card/actions/workflows/validate.yml"><img src="https://github.com/yybd/schedule-helper-card/actions/workflows/validate.yml/badge.svg" alt="Validate"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/yybd/schedule-helper-card" alt="License"></a>
@@ -29,6 +29,7 @@
 - [Configuration](#configuration)
 - [Shabbat and Jewish holiday (chag) modes](#shabbat-and-jewish-holiday-chag-modes)
 - [How it works](#how-it-works)
+- [Uninstalling](#uninstalling)
 - [Permissions](#permissions)
 - [FAQ](#faq)
 - [Contributing](#contributing)
@@ -133,24 +134,38 @@ on device schedules and Shabbat/chag modes.
 - Home Assistant **2025.1** or newer.
 - An **administrator** account to create or edit schedules. Other users see a read-only view (see
   [Permissions](#permissions)).
-- For Shabbat and chag times, the core **Jewish Calendar** integration (recommended) or Hebcal. Optional: the modes
-  work without it.
+- For Shabbat and chag times, the core [Jewish Calendar](https://www.home-assistant.io/integrations/jewish_calendar/)
+  integration (recommended) or Hebcal. Optional: the modes work without it, but **automatic chag** needs Jewish
+  Calendar.
+
+What the card adds to your Home Assistant, only when you ask it to: a **schedule helper** and an **automation** for each
+schedule you create, the labels `שבת` and `חג` once you use a mode, an automation for automatic Shabbat or chag if you
+switch it on, and a *Schedule Helper* dashboard if you create one. All of them are ordinary Home Assistant objects (see
+[How it works](#how-it-works) and [Uninstalling](#uninstalling)).
 
 ## Installation
 
 ### HACS (recommended)
 
+Schedule Helper Card is in the HACS default list.
+
 [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=yybd&repository=schedule-helper-card&category=plugin)
 
-Or add it by hand:
+Or by hand:
 
 1. In Home Assistant, open **HACS**.
-2. Open the menu (⋮) → **Custom repositories**.
-3. Add `https://github.com/yybd/schedule-helper-card` with type **Dashboard**.
-4. Search for **Schedule Helper Card**, open it and select **Download**.
-5. Reload the browser.
+2. Search for **Schedule Helper Card**, open it and select **Download**.
+3. Reload the browser.
 
 HACS registers the dashboard resource for you.
+
+<details>
+<summary>It doesn't show up in the search</summary>
+
+A newly listed repository can take a few hours to appear. Until then, add it as a custom repository: in HACS, open the
+menu (⋮) → **Custom repositories**, add `https://github.com/yybd/schedule-helper-card` with type **Dashboard**, then
+search again.
+</details>
 
 ### Manual installation
 
@@ -159,6 +174,9 @@ HACS registers the dashboard resource for you.
 3. Go to *Settings → Dashboards → ⋮ → Resources → Add resource*.
 4. Enter the URL `/local/schedule-helper-card.js` with type **JavaScript module**.
 5. Reload the browser.
+
+To update, replace the file and reload the browser; if the old version still shows, clear the browser cache (or add
+`?v=<version>` to the resource URL).
 
 ### Add the cards
 
@@ -186,7 +204,7 @@ After installing, reload the browser. Then either:
 The card was called *Beit Schedule Card* until 2.0, in the repository `yybd/beit-schedule-card` (GitHub redirects the
 old address). Dashboards that use `custom:beit-schedule-card` or `custom:beit-shabbat-card` keep working. To move to 2.0:
 
-1. In HACS, remove *Beit Schedule Card* (or *Beit Weekly Schedule*), then add this repository again and download it.
+1. In HACS, remove *Beit Schedule Card* (or *Beit Weekly Schedule*), then search HACS for *Schedule Helper Card* and download it.
    The file is now `schedule-helper-card.js`; HACS registers the new resource.
 2. Check *Settings → Dashboards → ⋮ → Resources*: if `/hacsfiles/beit-schedule-card/beit-schedule-card.js` is still
    listed, delete it (HACS may leave it behind, pointing at a file that is gone).
@@ -201,7 +219,7 @@ and configured in the visual editor.
 
 ```yaml
 type: custom:schedule-helper-card
-title: תזמונים            # optional
+title: My schedules       # optional
 height: 500px              # optional: fixed height, the list scrolls
 mode: שבת                  # optional: show only schedules in this mode (שבת / חג)
 entities:                  # optional: show only these schedules
@@ -210,7 +228,7 @@ entities:                  # optional: show only these schedules
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `title` | string | `תזמונים` | Card title. |
+| `title` | string | *Schedules* | Card title. The default follows the user's language (`תזמונים` in Hebrew). |
 | `mode` | string | — | Show only the schedules in this mode. |
 | `entities` | list | all | Show only these schedule helpers. |
 | `hide_entities` | list | — | Hide these schedule helpers. |
@@ -229,7 +247,7 @@ show_calendar: true        # optional
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `title` | string | `שבת וחג` | Card title. |
+| `title` | string | *Shabbat & chag* | Card title. The default follows the user's language (`שבת וחג` in Hebrew). |
 | `modes` | list | `[שבת, חג]` | Which modes to show. |
 | `height` | string | auto | A fixed height, such as `500px` or `60vh`. The title stays put and the rest scrolls inside the card. |
 | `show_calendar` | boolean | `true` | Show candle lighting, havdalah, the parasha and the holiday. |
@@ -259,13 +277,21 @@ A mode is a Home Assistant **label**, named `שבת` or `חג`.
 For every schedule it creates, the card writes two standard Home Assistant objects:
 
 1. **A schedule helper** (`schedule.*`) holding the weekly hours.
-2. **An automation** (`Beit · <name>`) that performs the "on" action when the schedule turns on and the "off" action
+2. **An automation** (`Beit · <name>`; *Beit* is the name of the companion app that shares this data model) that performs the "on" action when the schedule turns on and the "off" action
    when it turns off.
    - It ignores transitions from `unavailable`/`unknown`, so a restart never switches a device.
    - Its description carries a marker (shared with the companion Beit app). That is how the card knows which
      automations it may later edit or delete.
 
 The full data model is documented in [docs/contract.md](docs/contract.md).
+
+## Uninstalling
+
+Remove the card in HACS (or delete the file and its resource, for a manual installation). Everything it created stays
+in Home Assistant and keeps working: the schedule helpers, the `Beit · …` automations, the automatic Shabbat and chag
+automations, the labels `שבת` and `חג`, and the *Schedule Helper* dashboard if you created one. To remove them as
+well, delete them under *Settings → Devices & services → Helpers*, *Settings → Automations & scenes*, *Settings →
+Areas, labels & zones → Labels* and *Settings → Dashboards*.
 
 ## Permissions
 
