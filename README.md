@@ -39,7 +39,7 @@
 
 > **You don't need to keep Shabbat to use this.** The Schedules card is a general-purpose weekly scheduler for any
 > device in any home. Shabbat and the Jewish holidays are an optional extra: a second card you can simply not add, and
-> the Schedules card leaves them out unless you turn them on (`show_modes: true`).
+> the Schedules card shows them only in a home that already has a `שבת` or `חג` label (or with `show_modes: true`).
 >
 > *Chag* is Hebrew for a **Jewish holiday**: the festival days kept like Shabbat (Yom Tov), such as Rosh Hashanah,
 > Yom Kippur, Sukkot, Pesach and Shavuot.
@@ -48,7 +48,7 @@ The package contains **two separate cards**. Add one or both; each works on its 
 
 | | Card | What it is for |
 |:-:|---|---|
-| 🗓️ | **Schedules**<br>`custom:schedule-helper-card`<br>*the main card, for every home* | **Setting up schedules.** Create and edit a weekly schedule for any device (air conditioner, heating, lights, water heater, plugs, blinds): the hours for each day, and what the device does. Shabbat and chag stay out of it unless you set `show_modes: true`. |
+| 🗓️ | **Schedules**<br>`custom:schedule-helper-card`<br>*the main card, for every home* | **Setting up schedules.** Create and edit a weekly schedule for any device (air conditioner, heating, lights, water heater, plugs, blinds): the hours for each day, and what the device does. Shabbat and chag appear only once your home uses them (a `שבת` or `חג` label), or with `show_modes: true`. |
 | 🕯️ | **Shabbat & Jewish holidays**<br>`custom:schedule-helper-shabbat-card`<br>*optional* | **For homes that keep Shabbat and the Jewish holidays (chag).** Switch each mode on or off, choose which automations belong to it, set automatic Shabbat and chag, and see candle lighting, havdalah and the parasha. |
 
 ## Features
@@ -61,8 +61,8 @@ The package contains **two separate cards**. Add one or both; each works on its 
 - **Edit every schedule in the house.** A clear week view for each UI-managed schedule helper. You can add ranges, copy a
   day to the other weekdays or to the whole week, and set ranges that run until midnight. For a schedule the card
   created, you can also change the device and what it does; renaming a schedule renames its automation too.
-- **Put a schedule in a mode.** With `show_modes: true`, mark it as a Shabbat or chag schedule, so the Shabbat & chag
-  card switches it with the rest of the mode.
+- **Put a schedule in a mode.** Mark it as a Shabbat or chag schedule, so the Shabbat & chag card switches it with the
+  rest of the mode. (Shown once your home uses the modes; see `show_modes`.)
 
 ### 🕯️ Shabbat & Jewish holidays (chag) card (optional)
 
@@ -222,7 +222,7 @@ and configured in the visual editor.
 type: custom:schedule-helper-card
 title: My schedules       # optional
 height: 500px              # optional: fixed height, the list scrolls
-show_modes: true           # optional: show Shabbat and chag (off by default)
+show_modes: true           # optional: show Shabbat and chag (default: only if the home has their labels)
 mode: שבת                  # optional: show only schedules in this mode (שבת / חג)
 entities:                  # optional: show only these schedules
   - schedule.living_room_ac
@@ -237,7 +237,7 @@ entities:                  # optional: show only these schedules
 | `show_add` | boolean | `true` | Show the **New schedule** button. |
 | `height` | string | up to `700px` | A fixed height, such as `500px` or `60vh`. The title stays put and the list scrolls inside the card. Unset, the card grows with its content up to 700px; `auto` removes the limit. |
 | `device_domains` | list | all | Device types offered when choosing a device, e.g. `[climate, light, water_heater]`. |
-| `show_modes` | boolean | `false` | Show Shabbat and chag (Jewish holidays): the mode chips and the mode choice in the editor. Turn it on if your home keeps them. |
+| `show_modes` | boolean | automatic | Show Shabbat and chag (Jewish holidays): the mode chips and the mode choice in the editor. Unset, they are shown only when your home already has a `שבת` or `חג` label (the Shabbat card creates them the first time you use a mode). `true` or `false` decides it. |
 
 ### 🕯️ Shabbat & Jewish holidays (chag) card (optional)
 

@@ -211,7 +211,23 @@ const CHECKS = [
     must(p.body.triggers[1].entity_id[0].startsWith('binary_sensor.jewish_calendar_issur_melacha'), 'ends with issur melacha');
     must(B().querySelector('[data-automode="חג"]').checked, 'shown on');
   `],
-  ['by default the schedules card leaves Shabbat and chag out; show_modes: true shows them', '', `
+  ['by default the schedules card shows Shabbat and chag only in a home that has their labels', '', `
+    // This house has both labels: shown.
+    must(S().querySelector('.list .chip'), 'mode chips');
+    // A house with neither: left out.
+    const { FakeHass } = await import('../tests/fake-hass.mjs');
+    const names = ['states', 'schedule_list', 'automation_configs', 'label_registry', 'entity_registry_display', 'area_registry', 'device_registry', 'yaml_schedules'];
+    const fx = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await (await fetch('../tests/fixtures/' + n + '.json')).json()])));
+    const bare = new FakeHass({ ...fx, label_registry: [] }, { language: 'en' });
+    const card = document.createElement('schedule-helper-card');
+    card.setConfig({});
+    document.body.appendChild(card);
+    card.hass = bare.snapshot();
+    await sleep(500);
+    must(card.shadowRoot.querySelector('.row') && !card.shadowRoot.querySelector('.list .chip'), 'no mode chips without labels');
+    card.remove();
+  `],
+  ['show_modes: false hides Shabbat and chag even where the labels exist', 'schedules=' + encodeURIComponent('{"show_modes":false}'), `
     must(!S().querySelector('.list .chip'), 'no mode chips');
     await openEditor('schedule.bedroom_ac_shabbat');
     must(!D().querySelector('.seg'), 'no mode choice');

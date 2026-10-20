@@ -786,6 +786,9 @@ export async function alignWithMode(hass, labelName, automationIds) {
   if (change.length) await hass.callService('automation', on ? 'turn_on' : 'turn_off', {}, { entity_id: change });
 }
 
+/** Whether a home uses Shabbat or chag at all: a label named for either exists. */
+export const hasModeLabels = (labels) => (labels || []).some((l) => MODES.includes(l?.name));
+
 /** Switches every automation of a mode on or off in one call. */
 export async function setModeEnabled(hass, registry, labelName, enabled) {
   const members = modeMembers(hass.states, registry, labelName).filter((m) => !isAutoAlias(m.attributes?.friendly_name));
@@ -1149,7 +1152,7 @@ export const STRINGS = {
     edTitle: 'כותרת',
     edShowAdd: 'כפתור "תזמון חדש"',
     edShowModes: 'הצגת שבת וחג',
-    edShowModesHint: 'הדליקו אם הבית שומר שבת וחג: הכרטיס יציג לכל תזמון את המצב שלו, ויאפשר לבחור אותו בעריכה.',
+    edShowModesHint: 'לכל תזמון יוצג המצב שלו, ואפשר יהיה לבחור אותו בעריכה. כברירת מחדל: מופעל רק אם בבית כבר יש תווית "שבת" או "חג".',
     edDeviceDomains: 'סוגי מכשירים לתזמון',
     edDeviceDomainsHint: 'רק הסוגים המסומנים יופיעו בבחירת מכשיר.',
     allTypes: 'הכול',
@@ -1291,7 +1294,7 @@ export const STRINGS = {
     edTitle: 'Title',
     edShowAdd: '"New schedule" button',
     edShowModes: 'Show Shabbat and chag (Jewish holidays)',
-    edShowModesHint: 'Turn on if your home keeps Shabbat and chag (Jewish holidays): the card shows each schedule\'s mode and lets you choose it when editing.',
+    edShowModesHint: 'The card shows each schedule\'s mode and lets you choose it when editing. By default, on only if your home already has a "שבת" or "חג" label.',
     edDeviceDomains: 'Device types to schedule',
     edDeviceDomainsHint: 'Only the ticked types appear when choosing a device.',
     allTypes: 'All',
@@ -1594,7 +1597,7 @@ class ScheduleHelperCard extends CardBase {
     if (config?.entities && !Array.isArray(config.entities)) throw new Error('entities must be a list');
     if (config?.hide_entities && !Array.isArray(config.hide_entities)) throw new Error('hide_entities must be a list');
     if (config?.device_domains && !Array.isArray(config.device_domains)) throw new Error('device_domains must be a list');
-    this._config = { show_add: true, show_modes: false, ...config };
+    this._config = { show_add: true, ...config };
     this._sig = null;
     this._render();
   }
@@ -1709,6 +1712,13 @@ class ScheduleHelperCard extends CardBase {
     return this._ids?.[entityId] ?? entityId.slice('schedule.'.length);
   }
 
+  /** Shabbat and chag: as `show_modes` says, or, when it is not set, only in a home that already has their labels. */
+  _showModes() {
+    const v = this._config?.show_modes;
+    if (typeof v === 'boolean') return v;
+    return hasModeLabels(this._labels);
+  }
+
   _visible() {
     const c = this._config || {};
     const reg = this._registry();
@@ -1763,7 +1773,7 @@ class ScheduleHelperCard extends CardBase {
     const editableWeek = this._weeks?.[id];
     const week = editableWeek || this._readWeeks?.[e.entity_id];
     const yaml = e.attributes?.editable === false || (this._weeks && !week);
-    const mode = this._config.show_modes === true ? this._modeOf(e.entity_id, reg) : null;
+    const mode = this._showModes() ? this._modeOf(e.entity_id, reg) : null;
     const on = e.state === 'on';
     const next = e.attributes?.next_event ? new Date(e.attributes.next_event) : null;
     const editable = canEdit && !yaml && !!editableWeek;
@@ -2047,7 +2057,7 @@ class ScheduleEditor {
       <label class="field"><span>${esc(t.name)}</span>
         <input id="name" data-focus="name" value="${esc(this.week.name)}" autocomplete="off"
           ${this.isNew ? `placeholder="${esc(t.namePlaceholder)}"` : ''}></label>
-      ${this.card._config.show_modes !== true ? '' : `<div class="section">
+      ${!this.card._showModes() ? '' : `<div class="section">
         <div class="label">${esc(t.type)}</div>
         <div class="seg" role="radiogroup" aria-label="${esc(t.type)}">
           ${seg.map(([m, label]) => `<button role="radio" aria-checked="${this.mode === m}" data-act="mode" data-mode="${esc(m ?? '')}"
@@ -3090,11 +3100,27 @@ class EditorBase extends Base {
 }
 
 class ScheduleHelperCardEditor extends EditorBase {
+  set hass(hass) {
+    const first = !this._hass;
+    super.hass = hass;
+    if (first) {
+      // What "Show Shabbat and chag" means when it is not set: whether the home has their labels.
+      hass.callWS({ type: 'config/label_registry/list' }).then((labels) => {
+        this._modesInHome = hasModeLabels(labels);
+        this._render();
+      }, () => {});
+    }
+  }
+
+  get hass() {
+    return this._hass;
+  }
+
   _render() {
     if (!this._config) return;
     const t = this._t;
     const c = this._config;
-    const showModes = c.show_modes === true;
+    const showModes = typeof c.show_modes === 'boolean' ? c.show_modes : !!this._modesInHome;
     const schedules = Object.values(this._hass?.states || {})
       .filter((e) => e.entity_id.startsWith('schedule.'))
       .sort((a, b) => entityName(a).localeCompare(entityName(b), langOf(this._hass)));
@@ -3130,8 +3156,9 @@ class ScheduleHelperCardEditor extends EditorBase {
     root.querySelectorAll('[data-bool]').forEach((el) => el.addEventListener('change', () => {
       const config = { ...this._config, [el.dataset.bool]: el.checked };
       if (el.dataset.bool === 'show_modes' && !el.checked) delete config.mode;
-      // show_add is on by default, show_modes off: store only what differs.
-      if (el.checked === (el.dataset.bool === 'show_add')) delete config[el.dataset.bool];
+      // Store only what differs from the default: show_add is on; show_modes follows the home's labels.
+      const byDefault = el.dataset.bool === 'show_add' ? true : !!this._modesInHome;
+      if (el.checked === byDefault) delete config[el.dataset.bool];
       this._emit(config);
       if (el.dataset.bool === 'show_modes') this._render();
     }));
