@@ -316,6 +316,26 @@ const CHECKS = [
     must(after.mode === 'restart', 'the hand edit is kept');
     must(D()?.querySelector('.error'), 'the dialog says why');
   `],
+  ['a schedule whose automations are all off says it will not run', 'lang=en', `
+    await sleep(500);
+    const state = (id) => S().querySelector('.row[data-id="' + id + '"] .state')?.textContent;
+    must(state('schedule.bedroom_ac_shabbat') === 'Automation off', 'bedroom: ' + state('schedule.bedroom_ac_shabbat'));
+    click(B().querySelector('[data-auto="automation.beit_bedroom_ac_shabbat"]'), 'switch it on');
+    await sleep(600);
+    must(state('schedule.bedroom_ac_shabbat') === 'Off', 'back to its own state: ' + state('schedule.bedroom_ac_shabbat'));
+    // Without search/related, a schedule in a mode that is off says so.
+    const callWS = fake.callWS.bind(fake);
+    fake.callWS = (m) => (m.type === 'search/related' && m.item_type === 'entity' ? Promise.reject({ code: 'unauthorized', message: 'no' }) : callWS(m));
+    const card = document.createElement('schedule-helper-card');
+    card.setConfig({});
+    document.body.appendChild(card);
+    card.hass = fake.snapshot();
+    await sleep(800);
+    const chag = [...card.shadowRoot.querySelectorAll('.row')].find((r) => r.textContent.includes('Kids AC chag'));
+    must(chag?.querySelector('.state').textContent === 'Chag mode off', 'fallback: ' + chag?.querySelector('.state').textContent);
+    card.remove();
+    fake.callWS = callWS;
+  `],
   ['a flipped switch stays put until HA catches up, and goes back if the call fails', '', `
     // In HA the state change arrives after the service call returns; the fake applies it at once unless told otherwise.
     const apply = fake._setState.bind(fake);

@@ -1053,6 +1053,11 @@ export const STRINGS = {
     at: (when, time) => `${when} ב-${time}`,
     yaml: 'מוגדר ב-YAML — לקריאה בלבד',
     noSchedules: 'אין תזמונים להצגה',
+    automationOff: 'האוטומציה כבויה',
+    noAutomation: 'אין אוטומציה',
+    modeIsOff: (m) => `מצב ${m} כבוי`,
+    wontRun: 'התזמון לא יפעיל כלום כל עוד אין אוטומציה פעילה שמשתמשת בו',
+    wontRunShort: 'לא יפעיל כלום',
     changedElsewhere: 'התזמון השתנה במקום אחר מאז שנפתח כאן. שמירה תחליף את השינוי ההוא.',
     loadTheirs: 'טען את הגרסה החדשה',
     deletedElsewhere: 'התזמון נמחק במקום אחר.',
@@ -1195,6 +1200,11 @@ export const STRINGS = {
     at: (when, time) => `${when} at ${time}`,
     yaml: 'Defined in YAML — read only',
     noSchedules: 'No schedules to show',
+    automationOff: 'Automation off',
+    noAutomation: 'No automation',
+    modeIsOff: (m) => `${m} mode off`,
+    wontRun: 'This schedule switches nothing while no automation that uses it is on',
+    wontRunShort: 'will not run',
     changedElsewhere: 'This schedule was changed elsewhere since you opened it. Saving will replace that change.',
     loadTheirs: 'Load the new version',
     deletedElsewhere: 'This schedule was deleted elsewhere.',
@@ -1608,8 +1618,10 @@ class ScheduleHelperCard extends CardBase {
     if (first) {
       this._loadLabels();
       this._loadWeeks();
+      this._loadDrivers();
       this._subscribe();
     } else {
+      if (this._driversSig !== this._driversKey()) this._loadDrivers();
       this._checkLabels();
       if (this._weeksSig !== this._scheduleSig()) this._loadWeeks();
     }
@@ -1737,7 +1749,7 @@ class ScheduleHelperCard extends CardBase {
     const visible = this._visible();
     const sig = JSON.stringify([
       this._lang, this._isAdmin, this._config, new Date().toDateString(), new Date().getHours(),
-      visible.map((e) => [e.entity_id, e.last_updated, reg.entityLabels[e.entity_id]]), !!this._weeks, Object.keys(this._readWeeks || {}).length, this._labels?.length,
+      visible.map((e) => [e.entity_id, e.last_updated, reg.entityLabels[e.entity_id], this._idleReason(e.entity_id, reg)]), !!this._weeks, Object.keys(this._readWeeks || {}).length, this._labels?.length,
     ]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
@@ -1778,6 +1790,22 @@ class ScheduleHelperCard extends CardBase {
     const next = e.attributes?.next_event ? new Date(e.attributes.next_event) : null;
     const editable = canEdit && !yaml && !!editableWeek;
     const when = next && !isNaN(next) ? `${on ? t.ends : t.starts} ${formatWhen(next, now, this._lang)}` : '';
+    const idle = this._idleReason(e.entity_id, reg);
+    if (idle) {
+      const ownMode = this._modeOf(e.entity_id, reg);
+      const label = idle === 'modeOff' ? t.modeIsOff(t.modeName[ownMode]) : t[idle];
+      return this._rowShell(e, editable, `
+        <div class="line">
+          <span class="dot" title="${esc(label)}"></span>
+          <span class="name">${esc(entityName(e))}</span>
+          ${mode ? `<span class="chip ${mode === 'שבת' ? 'shabbat' : 'chag'}">${esc(t.modeName[mode])}</span>` : ''}
+          <span class="spacer"></span>
+          <span class="state idle" title="${esc(t.wontRun)}">${esc(label)}</span>
+        </div>
+        ${when ? `<div class="when muted small">${esc(when)} · ${esc(t.wontRunShort)}</div>` : ''}
+        ${yaml ? `<div class="muted small">${esc(t.yaml)}</div>` : ''}
+        ${week ? `<div class="idle-bars">${weekBarsHtml(week, this._lang)}</div>` : ''}`);
+    }
     return `
       <div class="row ${editable ? 'editable' : ''}" role="listitem" ${editable ? `data-id="${esc(e.entity_id)}" tabindex="0"` : ''}
         aria-label="${esc(entityName(e))}">
@@ -1791,6 +1819,13 @@ class ScheduleHelperCard extends CardBase {
         ${when ? `<div class="when muted small">${esc(when)}</div>` : ''}
         ${yaml ? `<div class="muted small">${esc(t.yaml)}</div>` : ''}
         ${week ? weekBarsHtml(week, this._lang) : ''}
+      </div>`;
+  }
+
+  _rowShell(e, editable, inner) {
+    return `
+      <div class="row idle ${editable ? 'editable' : ''}" role="listitem" ${editable ? `data-id="${esc(e.entity_id)}" tabindex="0"` : ''}
+        aria-label="${esc(`${entityName(e)} — ${this._t.wontRun}`)}">${inner}
       </div>`;
   }
 
@@ -1830,6 +1865,52 @@ class ScheduleHelperCard extends CardBase {
   _afterWrite() {
     this._loadWeeks();
     this._loadLabels();
+    this._driversSig = null;
+    this._loadDrivers();
+  }
+
+  /** The schedules and automations there are: when either set changes, which automation drives what may have too. */
+  _driversKey() {
+    const ids = Object.keys(this._hass?.states || {});
+    return ids.filter((id) => id.startsWith('schedule.') || id.startsWith('automation.')).sort().join('|');
+  }
+
+  /**
+   * The automations that use each schedule (search/related), to tell when none of them is on and the schedule will
+   * switch nothing. Null when HA would not say; the card then falls back to the schedule's mode.
+   */
+  async _loadDrivers() {
+    const key = this._driversKey();
+    if (key === this._driversSig) return;
+    this._driversSig = key;
+    const schedules = Object.keys(this._hass.states).filter((id) => id.startsWith('schedule.'));
+    try {
+      const pairs = await Promise.all(schedules.map(async (id) => [id, await automationsFor(this._h, id)]));
+      if (key === this._driversSig) this._drivers = Object.fromEntries(pairs);
+    } catch {
+      this._drivers = null;
+    }
+    this._render(true);
+  }
+
+  /**
+   * Why a schedule will not switch anything right now, or null when it will: 'automationOff' (every automation that
+   * uses it is off), 'noAutomation' (none uses it), or 'modeOff' (no answer from HA about its automations, but it is in
+   * a mode that is off).
+   */
+  _idleReason(entityId, reg) {
+    const states = this._hass.states;
+    const drivers = this._drivers?.[entityId];
+    if (drivers) {
+      const known = drivers.filter((a) => states[a]);
+      if (!known.length) return 'noAutomation';
+      return known.some((a) => states[a].state === 'on') ? null : 'automationOff';
+    }
+    if (this._drivers) return null; // loaded, but not for this one yet
+    const mode = this._modeOf(entityId, reg);
+    if (!mode) return null;
+    const members = modeMembers(states, reg, mode).filter((m) => !isAutoAlias(m.attributes?.friendly_name));
+    return modeState(members) === 'off' ? 'modeOff' : null;
   }
 
   /** Areas, devices and the entity registry, for the device picker; read once per card. */
@@ -2553,6 +2634,8 @@ const SCHEDULE_STYLE = `
   .spacer { flex: 1; }
   .state { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; }
   .state.on { color: var(--success-color, #43a047); font-weight: 500; }
+  .state.idle { color: var(--warning-color, #ffa600); font-weight: 500; }
+  .idle-bars { opacity: .45; }
   .when { margin: 2px 16px 0; }
   .bars { margin: 8px 16px 0; display: flex; flex-direction: column; gap: 3px; }
   .bar-row { display: flex; align-items: center; gap: 6px; }
