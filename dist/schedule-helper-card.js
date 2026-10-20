@@ -1297,7 +1297,8 @@ const BASE_STYLE = `
   .dot.on { background: var(--success-color, #43a047); }
   /* a switch built from a checkbox */
   .switch { position: relative; display: inline-block; width: 36px; height: 20px; flex: none; }
-  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  /* The box reaches past the drawn switch: 36x20 is too small a target for a finger. */
+  .switch input { position: absolute; inset: -8px; opacity: 0; margin: 0; cursor: pointer; z-index: 1; -webkit-tap-highlight-color: transparent; }
   .switch .track { position: absolute; inset: 3px 0; border-radius: 7px; background: var(--switch-unchecked-track-color, #9e9e9e); opacity: .5; transition: .15s; }
   .switch .knob { position: absolute; top: 0; inset-inline-start: 0; width: 20px; height: 20px; border-radius: 50%;
     background: var(--switch-unchecked-button-color, #fafafa); box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: .15s; }
@@ -1340,6 +1341,43 @@ class CardBase extends Base {
 
   get _lang() {
     return langOf(this._hass);
+  }
+
+  /**
+   * A switch the user just flipped shows its new position until HA's state catches up. Without this, a redraw before
+   * the state change arrives puts it back where it was, and the click looks lost. Gives up after 10 s.
+   */
+  _expect(ids, on) {
+    this._pending ??= new Map();
+    const until = Date.now() + 10000;
+    for (const id of ids) this._pending.set(id, { state: on ? 'on' : 'off', until });
+  }
+
+  _forget(ids) {
+    for (const id of ids) this._pending?.delete(id);
+  }
+
+  /** An entity's state as the user should see it: HA's, or the one a switch was just flipped to. */
+  _stateOf(id) {
+    const real = this._hass?.states?.[id]?.state;
+    const p = this._pending?.get(id);
+    if (!p) return real;
+    if (real === p.state || Date.now() > p.until) {
+      this._pending.delete(id);
+      return real;
+    }
+    return p.state;
+  }
+
+  /** Flips automations on or off, showing the new position at once and taking it back if the call fails. */
+  async _flip(ids, on, call) {
+    this._expect(ids, on);
+    const ok = await this._run(async () => {
+      await call();
+      return true;
+    });
+    if (!ok) this._forget(ids);
+    return ok;
   }
 
   get _t() {
@@ -1926,7 +1964,7 @@ class ScheduleEditor {
     else if (!autos.length) inner = `<div class="warn"><span>${esc(t.drivesNothing)}</span></div>`;
     else {
       inner = autos.map((a) => {
-        const on = states[a]?.state === 'on';
+        const on = this.card._stateOf(a) === 'on';
         return `<div class="opt"><div class="grow"><div>${esc(entityName(states[a]) || a)}</div>
           <div class="muted small">${esc(on ? t.autoOn : t.autoOff)}</div></div>
           ${switchHtml({ checked: on, label: entityName(states[a]) || a, attrs: `data-field="auto" data-id="${esc(a)}" data-focus="auto-${esc(a)}"` })}</div>`;
@@ -1938,7 +1976,7 @@ class ScheduleEditor {
   renderLinked() {
     const el = this.dlg?.querySelector('.linked');
     if (!el) return;
-    const sig = JSON.stringify([this.automations, (this.automations || []).map((a) => this.card._hass.states[a]?.state)]);
+    const sig = JSON.stringify([this.automations, (this.automations || []).map((a) => this.card._stateOf(a))]);
     if (sig === this._linkedSig) return;
     this._linkedSig = sig;
     const focusKey = this.card._root().activeElement?.dataset?.focus;
@@ -2119,8 +2157,9 @@ class ScheduleEditor {
     if (!f) return;
     if (f === 'auto') {
       const id = e.target.dataset.id;
-      // Back to what HA says, whether the call worked or not.
-      this.card._run(() => setAutomationEnabled(this.card._h, id, e.target.checked)).then(() => {
+      // Shows the new position until HA confirms it, or goes back to what HA says if the call failed.
+      const on = e.target.checked;
+      this.card._flip([id], on, () => setAutomationEnabled(this.card._h, id, on)).then(() => {
         this._linkedSig = null;
         this.renderLinked();
       });
@@ -2453,7 +2492,8 @@ class ScheduleHelperShabbatCard extends CardBase {
     const cal = findCalendar(states);
     const modes = this._config.modes.filter((m) => MODES.includes(m));
     const members = Object.fromEntries(modes.map((m) => [m, {
-      automations: modeMembers(states, reg, m).filter((e) => !isAutoAlias(e.attributes?.friendly_name)),
+      automations: modeMembers(states, reg, m).filter((e) => !isAutoAlias(e.attributes?.friendly_name))
+        .map((e) => ({ ...e, state: this._stateOf(e.entity_id) })),
       schedules: modeMembers(states, reg, m, 'schedule'),
     }]));
     const calIds = [cal.issur, cal.candleLighting, cal.havdalah, cal.date, cal.parasha, cal.holiday, ...Object.values(cal.hebcal)].filter(Boolean);
@@ -2628,13 +2668,16 @@ class ScheduleHelperShabbatCard extends CardBase {
     const d = e.target.dataset || {};
     const on = e.target.checked;
     if (d.master) {
+      const ids = modeMembers(this._hass.states, this._registry(), d.master)
+        .filter((m) => !isAutoAlias(m.attributes?.friendly_name)).map((m) => m.entity_id);
+      this._expect(ids, on); // before the busy redraw, so the switch stays where it was flipped to
       this._busy = d.master;
       this._render(true);
-      await this._run(() => setModeEnabled(this._h, this._registry(), d.master, on));
+      await this._flip(ids, on, () => setModeEnabled(this._h, this._registry(), d.master, on));
       this._busy = null;
       this._render(true);
     } else if (d.auto) {
-      await this._run(() => setAutomationEnabled(this._h, d.auto, on));
+      await this._flip([d.auto], on, () => setAutomationEnabled(this._h, d.auto, on));
       this._render(true);
     } else if (d.automode) {
       const mode = d.automode;

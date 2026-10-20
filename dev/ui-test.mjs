@@ -246,6 +246,28 @@ const CHECKS = [
     await sleep(500);
     must(![...D().querySelectorAll('.pick')].some((b) => b.dataset.id.startsWith('climate.')), 'no air conditioners offered');
   `],
+  ['a flipped switch stays put until HA catches up, and goes back if the call fails', '', `
+    // In HA the state change arrives after the service call returns; the fake applies it at once unless told otherwise.
+    const apply = fake._setState.bind(fake);
+    fake._setState = (id, st) => setTimeout(() => apply(id, st), 400);
+    const watch = async (sel) => {
+      const from = B().querySelector(sel).checked;
+      click(B().querySelector(sel), sel);
+      for (let i = 0; i < 8; i++) {
+        must(B().querySelector(sel).checked === !from, sel + ' jumped back after ' + i * 80 + ' ms');
+        await sleep(80);
+      }
+    };
+    await watch('[data-auto]');
+    await watch('[data-master]');
+    fake.failNext('automation.turn_on', 'Nope');
+    fake.failNext('automation.turn_off', 'Nope');
+    const sw = B().querySelector('[data-auto]');
+    const was = sw.checked;
+    click(sw, 'member');
+    await sleep(200);
+    must(B().querySelector('[data-auto]').checked === was, 'a failed call leaves the switch where HA has it');
+  `],
 ];
 
 const stopServer = await startServer(PORT);
