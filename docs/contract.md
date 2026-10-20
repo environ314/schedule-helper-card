@@ -61,6 +61,9 @@ Written with `POST /api/config/automation/config/<id>`. From a card this is `has
   2. Wait for `schedule.<id>` to appear in `hass.states`.
   3. POST the automation.
   4. If the POST fails, `schedule/delete`, so the card never leaves a helper that drives nothing.
+- **A schedule that nothing uses** (no automation found by `search/related`): the card can write its automation later,
+  the same shape, when the user picks a device for it; it then joins the schedule's mode, if it has one. Nothing new to
+  read: to the app it is an ordinary automation carrying the marker.
 - **Changing what a schedule does** (its device, HVAC mode, temperature, brightness, turning off at the end): the one
   related automation that carries the marker **and** is still exactly in the shape above is POSTed again under the same
   id, rebuilt with the new target. An automation edited by hand is never rewritten; the user changes it in HA.

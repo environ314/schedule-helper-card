@@ -336,6 +336,30 @@ const CHECKS = [
     card.remove();
     fake.callWS = callWS;
   `],
+  ['a schedule nothing uses gets a device, and the card writes its automation in its mode', 'lang=en', `
+    const days = Object.fromEntries(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((d) => [d, []]));
+    await fake.callWS({ type: 'schedule/create', name: 'Garden lights', ...days, friday: [{ from: '18:00:00', to: '22:00:00' }] });
+    await sleep(1200);
+    // It is a Shabbat schedule already (its label), with no automation.
+    const labels = (await fake.callWS({ type: 'config/label_registry/list' }));
+    const shbt = labels.find((l) => l.name === 'שבת').label_id;
+    await fake.callWS({ type: 'config/entity_registry/update', entity_id: 'schedule.garden_lights', labels: [shbt] });
+    await sleep(600);
+    must(S().querySelector('.row[data-id="schedule.garden_lights"] .state').textContent === 'No automation', 'no automation yet');
+    await openEditor('schedule.garden_lights');
+    await sleep(300);
+    click(D().querySelector('[data-act=pick]'), 'choose a device');
+    await sleep(600);
+    click(D().querySelector('[data-act=choose][data-id="light.balcony"]'), 'balcony light');
+    click(D().querySelector('[data-act=save]'), 'save');
+    await sleep(1500);
+    const post = fake.calls.filter((c) => c.method === 'POST').at(-1);
+    must(post?.body?.triggers?.[0]?.entity_id?.[0] === 'schedule.garden_lights', 'automation for the schedule');
+    const auto = Object.values(fake.snapshot().states).find((e) => e.attributes?.id === post.path.split('/').pop());
+    const reg = await fake.callWS({ type: 'config/entity_registry/get', entity_id: auto.entity_id });
+    must(reg.labels.includes(shbt), 'the automation joined Shabbat mode');
+    must(S().querySelector('.row[data-id="schedule.garden_lights"] .state').textContent !== 'No automation', 'the row knows');
+  `],
   ['a flipped switch stays put until HA catches up, and goes back if the call fails', '', `
     // In HA the state change arrives after the service call returns; the fake applies it at once unless told otherwise.
     const apply = fake._setState.bind(fake);

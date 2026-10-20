@@ -616,33 +616,42 @@ export async function createScheduleWithAutomation(hass, week, target, { labelNa
     await hass.callWS({ type: 'schedule/delete', schedule_id: created.id });
     throw err;
   }
-  const automationId = String(Date.now());
   try {
-    await hass.callApi(
-      'POST',
-      `config/automation/config/${automationId}`,
-      buildScheduleAutomation({ id: automationId, scheduleEntityId, scheduleName: week.name.trim(), target }),
-    );
+    await addScheduleAutomation(hass, scheduleEntityId, week.name, target, { labelName, waitOptions });
   } catch (err) {
     // Half a schedule (a helper that drives nothing) is worse than none.
-    await hass.callWS({ type: 'schedule/delete', schedule_id: created.id });
+    if (!err?.posted) await hass.callWS({ type: 'schedule/delete', schedule_id: created.id });
+    // The schedule and its automation exist: saving again would make a second pair.
+    else throw Object.assign(err, { created: scheduleEntityId });
     throw err;
   }
-  if (labelName) {
-    try {
-      const automation = await waitForEntity(
-        hass,
-        (e) => e.entity_id.startsWith('automation.') && String(e.attributes?.id) === automationId,
-        waitOptions,
-      );
-      await setModeMembership(hass, labelName, [scheduleEntityId, automation.entity_id], true);
-      await alignWithMode(hass, labelName, [automation.entity_id]);
-    } catch (err) {
-      // The schedule and its automation exist: saving again would make a second pair.
-      throw Object.assign(err instanceof Error ? err : new Error(errorText(err)), { created: scheduleEntityId });
-    }
-  }
   return scheduleEntityId;
+}
+
+/**
+ * Writes the automation that makes an existing schedule switch a device (contract §2), and puts it in the schedule's
+ * mode. Used for a new schedule, and for one that nothing uses yet. An error after the POST carries `posted: true`:
+ * the automation exists then, and writing it again would make a second one.
+ */
+export async function addScheduleAutomation(hass, scheduleEntityId, scheduleName, target, { labelName = null, waitOptions } = {}) {
+  const automationId = String(Date.now());
+  await hass.callApi(
+    'POST',
+    `config/automation/config/${automationId}`,
+    buildScheduleAutomation({ id: automationId, scheduleEntityId, scheduleName: scheduleName.trim(), target }),
+  );
+  if (!labelName) return;
+  try {
+    const automation = await waitForEntity(
+      hass,
+      (e) => e.entity_id.startsWith('automation.') && String(e.attributes?.id) === automationId,
+      waitOptions,
+    );
+    await setModeMembership(hass, labelName, [scheduleEntityId, automation.entity_id], true);
+    await alignWithMode(hass, labelName, [automation.entity_id]);
+  } catch (err) {
+    throw Object.assign(err instanceof Error ? err : new Error(errorText(err)), { posted: true });
+  }
 }
 
 /**
@@ -1091,7 +1100,8 @@ export const STRINGS = {
     drives: 'מפעיל את',
     autoOn: 'אוטומציה פעילה',
     autoOff: 'אוטומציה כבויה',
-    drivesNothing: 'אף אוטומציה לא משתמשת בתזמון הזה — הוא לא מפעיל כלום.',
+    drivesNothing: 'אף אוטומציה לא משתמשת בתזמון הזה — הוא לא מפעיל כלום. בחרו מכשיר למטה, והכרטיס ייצור את האוטומציה.',
+    addDevice: 'מכשיר להפעלה',
     hours: 'שעות פעילות',
     addRange: 'טווח',
     from: 'מ־',
@@ -1239,7 +1249,8 @@ export const STRINGS = {
     drives: 'Drives',
     autoOn: 'Automation on',
     autoOff: 'Automation off',
-    drivesNothing: 'No automation uses this schedule, so it drives nothing.',
+    drivesNothing: 'No automation uses this schedule, so it drives nothing. Choose a device below and the card creates the automation.',
+    addDevice: 'Device to switch',
     hours: 'Active hours',
     addRange: 'Range',
     from: 'From',
@@ -2000,8 +2011,14 @@ class ScheduleEditor {
       this.card._pickerData().then((d) => { this.picker = d; if (this.view === 'picker') this.render(); }, (err) => { this.error = errorText(err); this.render(); });
     } else {
       this.automationsReady = automationsFor(this.card._h, this.entityId).then(
-        (a) => { this.automations = a; this.renderLinked(); return this.loadDriven(a); },
-        () => { this.automations = []; this.renderLinked(); },
+        (a) => {
+          this.automations = a;
+          // Nothing uses it: the device section appears, to create the automation.
+          if (!a.length && this.view === 'main') this.render();
+          else this.renderLinked();
+          return this.loadDriven(a);
+        },
+        () => { this.automations = []; this.automationsUnknown = true; this.renderLinked(); },
       );
     }
   }
@@ -2029,6 +2046,11 @@ class ScheduleEditor {
       this.syncName();
       this.render();
     }
+  }
+
+  /** An existing schedule that no automation uses: choosing a device creates the automation for it. */
+  get attachable() {
+    return !this.isNew && Array.isArray(this.automations) && !this.automations.length && !this.automationsUnknown;
   }
 
   /** What the device section describes now. */
@@ -2152,7 +2174,7 @@ class ScheduleEditor {
         ${this.mode ? `<div class="muted small">${esc(t.modeHint(t.modeName[this.mode]))}</div>` : ''}
       </div>`}
       ${this.isNew ? '' : `<div class="section linked">${this.linkedHtml()}</div>
-        ${this.driven ? this.targetHtml(t.whatItDoes) : this.handEdited ? `<div class="muted small">${esc(t.handEdited)}</div>` : ''}`}
+        ${this.driven ? this.targetHtml(t.whatItDoes) : this.attachable ? this.targetHtml(t.addDevice) : this.handEdited ? `<div class="muted small">${esc(t.handEdited)}</div>` : ''}`}
       <div class="section">
         <div class="label row-between"><span>${esc(t.hours)}</span>
           <button class="link" data-act="clear" data-focus="clear">${esc(t.clearAll)}</button></div>
@@ -2477,6 +2499,10 @@ class ScheduleEditor {
       } else {
         await this.automationsReady; // mode and rename need the linked automations
         await updateSchedule(h, this.id, this.week);
+        if (this.attachable && this.device) {
+          // The mode it already has (or the one just chosen): the new automation joins it.
+          await addScheduleAutomation(h, this.entityId, this.week.name, this.currentTarget(), { labelName: this.mode });
+        }
         if (this.driven) {
           // Read again: it may have been edited by hand in HA since this dialog opened, and is then left alone.
           const config = await automationConfig(h, this.driven.automation);
