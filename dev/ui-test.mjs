@@ -255,6 +255,28 @@ const CHECKS = [
     await sleep(500);
     must(![...D().querySelectorAll('.pick')].some((b) => b.dataset.id.startsWith('climate.')), 'no air conditioners offered');
   `],
+  ['hours changed elsewhere show up, even when the state does not change', '', `
+    // HA's own editor (or another device) changes Saturday only: same state, same next_event, so no state change.
+    const item = fake._schedules.find((s) => s.id === 'water_heater_weekdays');
+    const week = Object.fromEntries(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((d) => [d, item[d] || []]));
+    const row = () => S().querySelector('.row[data-id="schedule.water_heater_weekdays"] .bars').innerHTML;
+    const before = row();
+    const elsewhere = (saturday) => fake.callWS({ type: 'schedule/update', schedule_id: item.id, name: item.name, ...week, saturday });
+    await elsewhere([{ from: '10:00:00', to: '20:00:00' }]);
+    await sleep(600);
+    must(row() !== before, 'the week on the card follows');
+    // With the editor open, it says so instead of silently saving over it.
+    await openEditor('schedule.water_heater_weekdays');
+    must(!D().querySelector('[data-act=reloadRemote]'), 'no warning yet');
+    await elsewhere([{ from: '09:00:00', to: '11:00:00' }]);
+    await sleep(400);
+    click(D().querySelector('[data-act=reloadRemote]'), 'load the new version');
+    await sleep(100);
+    must(!D().querySelector('[data-act=reloadRemote]'), 'warning gone');
+    click(D().querySelector('[data-act=save]'), 'save');
+    await sleep(800);
+    must(fake._schedules.find((s) => s.id === item.id).saturday[0].from === '09:00:00', 'their version kept');
+  `],
   ['a flipped switch stays put until HA catches up, and goes back if the call fails', '', `
     // In HA the state change arrives after the service call returns; the fake applies it at once unless told otherwise.
     const apply = fake._setState.bind(fake);

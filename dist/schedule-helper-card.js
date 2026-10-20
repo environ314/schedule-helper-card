@@ -1050,6 +1050,9 @@ export const STRINGS = {
     at: (when, time) => `${when} ב-${time}`,
     yaml: 'מוגדר ב-YAML — לקריאה בלבד',
     noSchedules: 'אין תזמונים להצגה',
+    changedElsewhere: 'התזמון השתנה במקום אחר מאז שנפתח כאן. שמירה תחליף את השינוי ההוא.',
+    loadTheirs: 'טען את הגרסה החדשה',
+    deletedElsewhere: 'התזמון נמחק במקום אחר.',
     loadSchedulesFailed: 'לא הצלחתי לטעון את התזמונים לעריכה.',
     retry: 'נסה שוב',
     loading: 'טוען…',
@@ -1189,6 +1192,9 @@ export const STRINGS = {
     at: (when, time) => `${when} at ${time}`,
     yaml: 'Defined in YAML — read only',
     noSchedules: 'No schedules to show',
+    changedElsewhere: 'This schedule was changed elsewhere since you opened it. Saving will replace that change.',
+    loadTheirs: 'Load the new version',
+    deletedElsewhere: 'This schedule was deleted elsewhere.',
     loadSchedulesFailed: 'Could not load the schedules for editing.',
     retry: 'Try again',
     loading: 'Loading…',
@@ -1599,6 +1605,7 @@ class ScheduleHelperCard extends CardBase {
     if (first) {
       this._loadLabels();
       this._loadWeeks();
+      this._subscribe();
     } else {
       this._checkLabels();
       if (this._weeksSig !== this._scheduleSig()) this._loadWeeks();
@@ -1622,10 +1629,39 @@ class ScheduleHelperCard extends CardBase {
   connectedCallback() {
     // "today"/"tomorrow" go stale at midnight; the signature carries the date, so a tick is enough.
     this._clock = setInterval(() => this._render(), 60000);
+    if (this._hass) {
+      this._subscribe();
+      if (this._detached) this._loadWeeks(); // back on the page: whatever changed meanwhile
+    }
+  }
+
+  /**
+   * Hours edited elsewhere (HA's own editor, another device) often leave the entity's state and next_event as they
+   * were, so HA sends no state change and the card would keep showing the old week. The schedule collection's own
+   * subscription reports every create, update and delete. Without it (no connection, or HA refuses it) the card
+   * still follows state changes.
+   */
+  _subscribe() {
+    const conn = this._hass?.connection;
+    if (this._unsub || !conn?.subscribeMessage || !this.isConnected) return;
+    let first = true;
+    this._unsub = conn.subscribeMessage((changes) => {
+      if (first) {
+        first = false; // the current list, already loaded
+        return;
+      }
+      for (const c of changes || []) if (c.schedule_id === this._editor?.id) this._editor.changedElsewhere(c);
+      clearTimeout(this._subTimer);
+      this._subTimer = setTimeout(() => this._loadWeeks(), 250);
+    }, { type: 'schedule/subscribe' }).catch(() => null);
   }
 
   disconnectedCallback() {
     clearInterval(this._clock);
+    clearTimeout(this._subTimer);
+    this._unsub?.then((unsub) => unsub?.()).catch(() => {});
+    this._unsub = null;
+    this._detached = true;
     // A dialog removed from the page leaves the top layer without a close event.
     this._editor?.dlg?.close();
     this._editor?.destroy();
@@ -1984,10 +2020,28 @@ class ScheduleEditor {
     focus?.focus();
   }
 
+  /** The open schedule was changed or deleted elsewhere (HA's editor, another device) while this dialog was open. */
+  changedElsewhere(change) {
+    if (this.saving || !this.dlg?.open) return; // our own write coming back, or already closing
+    // Or it already says what this dialog says (our own write arriving late, or the same edit made twice).
+    if (change.item && JSON.stringify(WeekSchedule.fromHA(change.item).toHA()) === JSON.stringify(this.week.toHA())) return;
+    this.remote = change;
+    if (this.view === 'main') this.render();
+  }
+
+  remoteHtml() {
+    const t = this.t;
+    if (!this.remote) return '';
+    if (this.remote.change_type === 'removed') return `<div class="warn" role="alert"><span>${esc(t.deletedElsewhere)}</span></div>`;
+    return `<div class="warn" role="alert"><span class="grow">${esc(t.changedElsewhere)}</span>
+      <button class="btn" data-act="reloadRemote">${esc(t.loadTheirs)}</button></div>`;
+  }
+
   mainHtml() {
     const t = this.t;
     const seg = [[null, t.regular], ...MODES.map((m) => [m, t.modeName[m]])];
     return `
+      ${this.remoteHtml()}
       ${this.error ? `<div class="error" role="alert"><span>${esc(this.error)}</span></div>` : ''}
       ${this.isNew ? this.targetHtml() : ''}
       <label class="field"><span>${esc(t.name)}</span>
@@ -2173,6 +2227,15 @@ class ScheduleEditor {
       case 'save': return this.save();
       case 'askDelete': this.view = 'confirmDelete'; this.error = ''; break;
       case 'doDelete': return this.remove();
+      case 'reloadRemote':
+        // Starts again from the version saved elsewhere: what was changed here is dropped.
+        if (this.remote?.item) {
+          this.week = WeekSchedule.fromHA(this.remote.item);
+          this.originalName = this.week.name;
+        }
+        this.remote = null;
+        this.rangeEdit = this.copyFrom = null;
+        break;
       case 'mode': this.mode = el.dataset.mode || null; break;
       case 'pick':
         this.view = 'picker';

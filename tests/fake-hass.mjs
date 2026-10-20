@@ -79,7 +79,28 @@ export class FakeHass {
       callWS: (m) => self.callWS(m),
       callApi: (...a) => self.callApi(...a),
       callService: (...a) => self.callService(...a),
+      connection: { subscribeMessage: (cb, msg) => self.subscribeMessage(cb, msg) },
     };
+  }
+
+  /**
+   * HA's collection subscriptions (only `schedule/subscribe`): the callback gets every item as "added" first, then
+   * each change, as `[{change_type, schedule_id, item}]`. Resolves to the unsubscribe function, like HA's.
+   */
+  async subscribeMessage(callback, msg) {
+    this.calls.push(clone(msg));
+    this._maybeFail(msg.type);
+    if (msg.type !== 'schedule/subscribe') throw new HAError('unknown_command', `Unknown command: ${msg.type}`);
+    this._scheduleSubs ??= new Set();
+    this._scheduleSubs.add(callback);
+    const initial = this._schedules.map((item) => ({ change_type: 'added', schedule_id: item.id, item: clone(item) }));
+    setTimeout(() => callback(initial), 0);
+    return async () => this._scheduleSubs.delete(callback);
+  }
+
+  _scheduleChanged(change_type, item) {
+    const event = [{ change_type, schedule_id: item.id, item: clone(item) }];
+    for (const cb of this._scheduleSubs || []) setTimeout(() => cb(event), 0);
   }
 
   onChange(fn) {
@@ -275,6 +296,7 @@ const WS = {
     for (let n = 2; this._schedules.some((s) => s.id === id) || this._states[`schedule.${id}`]; n++) id = `${slugify(msg.name)}_${n}`;
     const item = { id, name: msg.name, ...weekOf(msg) };
     this._schedules = [...this._schedules, item];
+    this._scheduleChanged('added', item);
     this._later(() => {
       this._setState(`schedule.${id}`, this._scheduleState(item));
       this._ensureRegistry(`schedule.${id}`, 'schedule');
@@ -287,11 +309,13 @@ const WS = {
     checkWeek(msg);
     const item = { id: msg.schedule_id, name: msg.name, ...weekOf(msg) };
     this._schedules = this._schedules.map((s, k) => (k === i ? item : s));
+    this._scheduleChanged('updated', item);
     this._setState(`schedule.${item.id}`, this._scheduleState(item));
     return item;
   },
   'schedule/delete'(msg) {
     if (!this._schedules.some((s) => s.id === msg.schedule_id)) throw new HAError('not_found', `Unable to find schedule_id ${msg.schedule_id}`);
+    this._scheduleChanged('removed', this._schedules.find((s) => s.id === msg.schedule_id));
     this._schedules = this._schedules.filter((s) => s.id !== msg.schedule_id);
     this._removeEntity(`schedule.${msg.schedule_id}`);
     return null;
