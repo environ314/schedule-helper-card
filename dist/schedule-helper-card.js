@@ -864,7 +864,8 @@ export const entityName = (st) => st?.attributes?.friendly_name || st?.entity_id
 // ---------------------------------------------------------------------------- device picker
 
 /** Domains a schedule can drive, in the order the picker lists them (the app's tile domains, minus scene/script/lock). */
-export const PICKABLE_DOMAINS = ['light', 'switch', 'fan', 'cover', 'climate', 'water_heater', 'media_player', 'input_boolean', 'vacuum', 'siren', 'valve'];
+// Not vacuum: the contract's <domain>.turn_on / turn_off are not services of a vacuum (it has start / return_to_base).
+export const PICKABLE_DOMAINS = ['light', 'switch', 'fan', 'cover', 'climate', 'water_heater', 'media_player', 'input_boolean', 'siren', 'valve'];
 
 /**
  * The picker's sections: devices grouped by area (the entity's own area, else its device's), areas by name, then the
