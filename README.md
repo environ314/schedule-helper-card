@@ -134,9 +134,10 @@ on device schedules and Shabbat/chag modes.
 - Home Assistant **2025.1** or newer.
 - An **administrator** account to create or edit schedules. Other users see a read-only view (see
   [Permissions](#permissions)).
-- For Shabbat and chag times, the core [Jewish Calendar](https://www.home-assistant.io/integrations/jewish_calendar/)
-  integration (recommended) or Hebcal. Optional: the modes work without it, but **automatic chag** needs Jewish
-  Calendar.
+- For the Shabbat card's times and for **automatic Shabbat**: a Jewish calendar, either the
+  [Jewish Calendar](https://www.home-assistant.io/integrations/jewish_calendar/) integration (recommended, see
+  [Setting up Jewish Calendar](#setting-up-jewish-calendar)) or Hebcal. **Automatic chag** needs Jewish Calendar.
+  Without a calendar, you can still switch the modes by hand, and the Schedules card needs none at all.
 
 What the card adds to your Home Assistant, only when you ask it to: a **schedule helper** and an **automation** for each
 schedule you create, the labels `שבת` and `חג` once you use a mode, an automation for automatic Shabbat or chag if you
@@ -274,6 +275,39 @@ A mode is a Home Assistant **label**, named `שבת` or `חג`.
   in the calendar says so a day ahead.
 - **Switching an automatic mode off** disables its automation. It is never deleted, so changes you made to it in Home
   Assistant survive.
+
+### A typical week with automatic Shabbat
+
+The automatic mode never switches a device itself. It switches the mode's **automations** on and off, and each
+automation switches its device by its own schedule.
+
+- **Sunday to Friday morning:** the Shabbat automations are off. Their schedules still go on and off by the clock, but
+  nothing happens; the Schedules card marks them *Automation off · will not run*.
+- **Friday at 12:00** (or the time you chose): the mode switches on. From now on each Shabbat schedule drives its
+  device, e.g. the hot plate at 15:00 and the bedroom air conditioner at 21:00.
+- **After havdalah:** the automatic mode waits until every Shabbat schedule has ended (at most 6 hours), so a device
+  is not cut off mid-range, and then switches the mode off until next Friday.
+
+Automatic chag works the same way, from erev chag to the end of the chag.
+
+### Setting up Jewish Calendar
+
+Jewish Calendar is part of Home Assistant, so there is nothing to download, but it has to be added once. The card
+cannot add it for you; when it is missing, the Shabbat card shows a link to add it (for administrators).
+
+[![Open your Home Assistant instance and start setting up Jewish Calendar.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=jewish_calendar)
+
+Or by hand: *Settings → Devices & services → Add integration → Jewish Calendar*. Then:
+
+1. **Location** and **elevation**: your home's, which Home Assistant fills in. Times are computed from them.
+2. **Diaspora**: on only outside Israel. It decides which days are yom tov (one day or two).
+3. **Language**: Hebrew for Hebrew names of the parasha and the holidays, or English.
+4. Afterwards, under the integration's **Configure**: the minutes of candle lighting before sunset (18 by default; in
+   Israel usually 20, 30 or 40, depending on your city), and of havdalah after sunset (0 uses a fixed 8.5° below the
+   horizon).
+
+The card finds the integration's sensors by their entity ids, which start with `binary_sensor.jewish_calendar_` and
+`sensor.jewish_calendar_` (a `_2` suffix is fine). If you rename those entity ids, the card will not find them.
 
 ## How it works
 
