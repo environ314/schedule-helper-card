@@ -81,6 +81,9 @@ Written with `POST /api/config/automation/config/<id>`. From a card this is `has
 - **Changing a schedule's mode from the schedule editor** moves the schedule and only the automations carrying the
   marker that drive it; an automation the user wrote may only mention the schedule. Those automations then follow the
   mode: joining a mode that is on or off switches them to match; leaving every mode switches them on.
+  - Joining an **empty** mode (no other member) follows the calendar instead: off when the mode is over and not about
+    to begin (the facts below, under *Catch-up*), on otherwise. Without a readable calendar they are left as they are.
+    *(Card 2.0.2. The Beit app still leaves them as they are; to be aligned.)*
 - **Taking an automation out of a mode** also takes out the schedules its config refers to, except those another
   automation of the mode still refers to.
 - **Switching a mode:** `automation.turn_on` / `automation.turn_off` with target `{label_id}`, or with the member list. The switch shows:

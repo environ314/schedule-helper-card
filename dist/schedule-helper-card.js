@@ -764,6 +764,8 @@ export function modeMembers(states, registry, labelName, domain = 'automation') 
 /**
  * After automations join a mode (or leave all modes, `labelName` null): they follow the mode's current state, so
  * joining a mode that is off switches them off; leaving means they run every week again, so they are switched on.
+ * The first to join an empty mode follows the calendar: off when it is not Shabbat (or chag) and not about to be,
+ * since nothing else would switch it off before the mode ends next. Without a readable calendar it is left as it is.
  */
 export async function alignWithMode(hass, labelName, automationIds) {
   if (!automationIds.length) return;
@@ -773,8 +775,12 @@ export async function alignWithMode(hass, labelName, automationIds) {
     const others = modeMembers(hass.states, registry, labelName)
       .filter((m) => !automationIds.includes(m.entity_id) && !isAutoAlias(m.attributes?.friendly_name));
     const state = modeState(others);
-    if (state !== 'on' && state !== 'off') return; // partial or empty: nothing to follow
-    on = state === 'on';
+    if (state === 'partial') return; // nothing clear to follow
+    if (state === 'empty') {
+      const outside = modeOutsideNow(labelName, hass.states);
+      if (outside === null) return;
+      on = !outside;
+    } else on = state === 'on';
   }
   const change = automationIds.filter((id) => (hass.states?.[id]?.state === 'on') !== on);
   if (change.length) await hass.callService('automation', on ? 'turn_on' : 'turn_off', {}, { entity_id: change });

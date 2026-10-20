@@ -572,6 +572,23 @@ test('modeOutsideNow: off by the calendar, not on a Friday for Shabbat, unknown 
   assert.equal(modeOutsideNow('חג', {}, sunday), null);
 });
 
+test('the first automation to join an empty mode follows the calendar', async () => {
+  // automation.beit_kids_ac_chag is the only chag member, so for it the mode is empty.
+  const id = 'automation.beit_kids_ac_chag';
+  let hass = house();
+  withStates(hass, { [id]: 'on' });
+  await alignWithMode(hass, 'חג', [id]);
+  assert.equal(hass.states[id].state, 'off', 'a weekday: off until the next chag');
+  hass = house();
+  withStates(hass, { [id]: 'off', 'binary_sensor.jewish_calendar_issur_melacha_in_effect_2': 'on' });
+  await alignWithMode(hass, 'חג', [id]);
+  assert.equal(hass.states[id].state, 'on', 'in a chag: on');
+  hass = new FakeHass({ ...fixtures, states: fixtures.states.filter((s) => !s.entity_id.includes('jewish_calendar')) }, { now: SUNDAY_9AM });
+  withStates(hass, { [id]: 'on' });
+  await alignWithMode(hass, 'חג', [id]);
+  assert.equal(hass.states[id].state, 'on', 'no calendar to ask: left alone');
+});
+
 test('upgradeAuto adds the catch-up to an untouched automatic automation, and leaves an edited one alone', async () => {
   const cal = calOf(fixtures.states);
   const old = buildAutoModeAutomation({ id: '5', mode: 'שבת', labelId: 'shbt', start: { at: '13:00' }, cal, catchUp: false });
