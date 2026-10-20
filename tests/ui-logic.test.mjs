@@ -89,6 +89,7 @@ test('cssHeight: a bare number is pixels, other units pass through, empty is aut
   assert.equal(cssHeight(' 30rem '), '30rem');
   assert.equal(cssHeight(''), null);
   assert.equal(cssHeight(undefined), null);
+  assert.equal(cssHeight('auto'), null);
 });
 
 import { parseTimeInput } from '../dist/schedule-helper-card.js';

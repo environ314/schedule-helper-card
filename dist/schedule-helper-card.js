@@ -1168,7 +1168,7 @@ export const STRINGS = {
     edDashboardCreated: 'הדשבורד נוצר ומופיע בסרגל הצד.',
     edDashboardOpen: 'פתח',
     edHeight: 'גובה',
-    edHeightHint: 'אוטומטי — או למשל 500px או 60vh; התוכן נגלל בתוך הכרטיס',
+    edHeightHint: 'עד 700px כברירת מחדל — או למשל 500px, 60vh, או auto בלי הגבלה',
   },
   en: {
     errName: 'The schedule needs a name',
@@ -1307,14 +1307,18 @@ export const STRINGS = {
     edDashboardCreated: 'The dashboard was created; it is in the sidebar.',
     edDashboardOpen: 'Open',
     edHeight: 'Height',
-    edHeightHint: 'Automatic, or e.g. 500px or 60vh; the content scrolls inside the card',
+    edHeightHint: 'Up to 700px by default — or e.g. 500px, 60vh, or auto for no limit',
   },
 };
 
-/** A config height ("500px", "60vh", or a bare number of pixels) as CSS; null when the card should size itself. */
+/** The most a card grows when no `height` is set; beyond it the content scrolls inside the card. */
+export const DEFAULT_MAX_HEIGHT = '700px';
+
+/** A config height ("500px", "60vh", or a bare number of pixels) as CSS; null when unset or "auto". */
 export function cssHeight(value) {
   if (value === undefined || value === null || String(value).trim() === '') return null;
   const v = String(value).trim();
+  if (v.toLowerCase() === 'auto') return null;
   return /^\d+(\.\d+)?$/.test(v) ? `${v}px` : v;
 }
 
@@ -1555,9 +1559,12 @@ class CardBase extends Base {
   _paint(header, content) {
     const root = this._root();
     const card = root.querySelector('ha-card');
+    // No height set: the card grows with its content up to DEFAULT_MAX_HEIGHT, then scrolls; "auto" never caps it.
     const height = cssHeight(this._config.height);
-    card.classList.toggle('fixed', !!height);
+    const unset = !height && String(this._config.height ?? '').trim().toLowerCase() !== 'auto';
+    card.classList.toggle('fixed', !!height || unset);
     card.style.height = height || '';
+    card.style.maxHeight = unset ? DEFAULT_MAX_HEIGHT : '';
     const body = root.querySelector('.body');
     const top = body.querySelector('.scroll')?.scrollTop ?? 0;
     body.setAttribute('dir', this._dirAttr());

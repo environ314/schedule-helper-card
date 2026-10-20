@@ -233,7 +233,7 @@ entities:                  # optional: show only these schedules
 | `entities` | list | all | Show only these schedule helpers. |
 | `hide_entities` | list | — | Hide these schedule helpers. |
 | `show_add` | boolean | `true` | Show the **New schedule** button. |
-| `height` | string | auto | A fixed height, such as `500px` or `60vh`. The title stays put and the list scrolls inside the card. |
+| `height` | string | up to `700px` | A fixed height, such as `500px` or `60vh`. The title stays put and the list scrolls inside the card. Unset, the card grows with its content up to 700px; `auto` removes the limit. |
 | `device_domains` | list | all | Device types offered when choosing a device, e.g. `[climate, light, water_heater]`. |
 | `show_modes` | boolean | `true` | Show Shabbat and chag: the mode chips and the mode choice in the editor. Turn it off if you have no use for them. |
 
@@ -249,7 +249,7 @@ show_calendar: true        # optional
 |---|---|---|---|
 | `title` | string | *Shabbat & chag (Jewish holidays)* | Card title. The default follows the user's language (`שבת וחג` in Hebrew). |
 | `modes` | list | `[שבת, חג]` | Which modes to show. |
-| `height` | string | auto | A fixed height, such as `500px` or `60vh`. The title stays put and the rest scrolls inside the card. |
+| `height` | string | up to `700px` | A fixed height, such as `500px` or `60vh`. The title stays put and the rest scrolls inside the card. Unset, the card grows with its content up to 700px; `auto` removes the limit. |
 | `show_calendar` | boolean | `true` | Show candle lighting, havdalah, the parasha and the holiday. |
 
 ## Shabbat and Jewish holiday (chag) modes

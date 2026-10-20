@@ -216,6 +216,10 @@ const CHECKS = [
     await openEditor('schedule.bedroom_ac_shabbat');
     must(!D().querySelector('.seg'), 'no mode choice');
   `],
+  ['no height set: the card grows up to 700px, then scrolls', '', `
+    const card = S().querySelector('ha-card');
+    must(Math.round(card.getBoundingClientRect().height) === 700, 'height ' + card.getBoundingClientRect().height);
+  `],
   ['a fixed height scrolls inside the card', 'schedules=' + encodeURIComponent('{"height":"400px"}'), `
     const card = S().querySelector('ha-card');
     must(Math.round(card.getBoundingClientRect().height) === 400, 'height ' + card.getBoundingClientRect().height);
