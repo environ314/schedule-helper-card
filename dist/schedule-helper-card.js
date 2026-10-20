@@ -2617,15 +2617,27 @@ class ScheduleHelperShabbatCard extends CardBase {
 
   connectedCallback() {
     this._clock = setInterval(() => this._render(), 60000);
+    if (this._detached && this._hass) {
+      // Back on the page: labels and automatic automations may have changed meanwhile.
+      this._loadLabels();
+      this._loadAuto();
+    }
   }
 
   disconnectedCallback() {
     clearInterval(this._clock);
     this._members?.dlg?.close();
+    this._detached = true;
   }
 
+  /**
+   * What makes the automatic automations worth reading again: the set of automations, and when each automatic one
+   * last changed. Saving one in HA's editor reloads it (a new state object), so a start changed there shows up here.
+   */
   _automationIds() {
-    return Object.keys(this._hass?.states || {}).filter((id) => id.startsWith('automation.')).join('|');
+    const states = this._hass?.states || {};
+    const autos = Object.values(this._auto || {}).filter(Boolean).map((a) => `${a.entityId}@${states[a.entityId]?.last_updated}`);
+    return [Object.keys(states).filter((id) => id.startsWith('automation.')).join('|'), ...autos].join('#');
   }
 
   /** Finds each mode's automatic automation. Its config is admin-only; others see it by alias alone. */
@@ -2648,6 +2660,7 @@ class ScheduleHelperShabbatCard extends CardBase {
       }
     }
     this._auto = auto;
+    this._autoSig = this._automationIds(); // now with the automatic ones' own times
     this._autoLoaded = true;
     this._render(true);
   }

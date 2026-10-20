@@ -277,6 +277,16 @@ const CHECKS = [
     await sleep(800);
     must(fake._schedules.find((s) => s.id === item.id).saturday[0].from === '09:00:00', 'their version kept');
   `],
+  ['an automatic mode edited in HA shows its new start', '', `
+    toggle(B().querySelector('[data-automode="שבת"]'), true, 'automatic Shabbat');
+    await sleep(1500);
+    const st = Object.values(fake.snapshot().states).find((e) => e.attributes?.friendly_name === 'Beit · מצב שבת אוטומטי');
+    const cfg = (await fake.callWS({ type: 'automation/config', entity_id: st.entity_id })).config;
+    const next = { ...cfg, triggers: cfg.triggers.map((t) => (t.id === 'erev_shabbat' ? { ...t, at: '14:30:00' } : t)) };
+    await fake.callApi('POST', 'config/automation/config/' + cfg.id, next);
+    await sleep(1200);
+    must(B().querySelector('.start-line').textContent.includes('14:30'), 'start shown: ' + B().querySelector('.start-line').textContent);
+  `],
   ['a flipped switch stays put until HA catches up, and goes back if the call fails', '', `
     // In HA the state change arrives after the service call returns; the fake applies it at once unless told otherwise.
     const apply = fake._setState.bind(fake);
