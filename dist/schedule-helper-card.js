@@ -2382,9 +2382,11 @@ class ScheduleEditor {
         await this.automationsReady; // mode and rename need the linked automations
         await updateSchedule(h, this.id, this.week);
         if (this.driven) {
+          // Read again: it may have been edited by hand in HA since this dialog opened, and is then left alone.
+          const config = await automationConfig(h, this.driven.automation);
           // The alias follows the new name only while it is still the one the card gave it; renameScheduleAutomations decides.
-          const followsName = this.driven.config.alias === scheduleAlias(this.originalName.trim());
-          await rewriteScheduleAutomation(h, this.driven.config, {
+          const followsName = config?.alias === scheduleAlias(this.originalName.trim());
+          await rewriteScheduleAutomation(h, config, {
             scheduleName: followsName ? this.week.name : undefined,
             target: this.currentTarget(),
           });

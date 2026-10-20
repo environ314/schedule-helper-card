@@ -287,6 +287,19 @@ const CHECKS = [
     await sleep(1200);
     must(B().querySelector('.start-line').textContent.includes('14:30'), 'start shown: ' + B().querySelector('.start-line').textContent);
   `],
+  ['an automation edited by hand after the editor opened is not saved over', '', `
+    await openEditor('schedule.living_room_ac_shabbat');
+    await sleep(400);
+    const id = 'automation.beit_living_room_ac_shabbat';
+    const cfg = (await fake.callWS({ type: 'automation/config', entity_id: id })).config;
+    await fake.callApi('POST', 'config/automation/config/' + cfg.id, { ...cfg, mode: 'restart' }); // by hand, in HA
+    toggle(D().querySelector('[data-field=turnOff]'), false, 'turn off at the end');
+    click(D().querySelector('[data-act=save]'), 'save');
+    await sleep(800);
+    const after = (await fake.callWS({ type: 'automation/config', entity_id: id })).config;
+    must(after.mode === 'restart', 'the hand edit is kept');
+    must(D()?.querySelector('.error'), 'the dialog says why');
+  `],
   ['a flipped switch stays put until HA catches up, and goes back if the call fails', '', `
     // In HA the state change arrives after the service call returns; the fake applies it at once unless told otherwise.
     const apply = fake._setState.bind(fake);
