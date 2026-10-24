@@ -1,7 +1,7 @@
 // The small pieces of display logic that don't need a DOM.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatWhen, langOf } from '../dist/schedule-helper-card.js';
+import { formatWhen, langOf, dayOrder } from '../dist/schedule-helper-card.js';
 
 test('formatWhen: today, tomorrow, a weekday', () => {
   const now = new Date(2026, 0, 4, 9, 0); // Sunday
@@ -15,7 +15,7 @@ test('formatWhen: today, tomorrow, a weekday', () => {
 test('langOf reads hass.locale, then hass.language', () => {
   assert.equal(langOf({ locale: { language: 'he' } }), 'he');
   assert.equal(langOf({ language: 'en-GB' }), 'en');
-  assert.equal(langOf({ locale: { language: 'fr' } }), 'en');
+  assert.equal(langOf({ locale: { language: 'fr-FR' } }), 'fr');
   assert.equal(langOf({ language: 'iw' }), 'he');
   // No language known: English.
   assert.equal(langOf(undefined), 'en');
@@ -122,4 +122,21 @@ test('actionSummary says what a schedule does to its device', () => {
   assert.equal(actionSummary({ entityId: 'cover.c' }, 'he'), 'בתחילת הטווח: נפתח · בסופו: נסגר');
   assert.equal(actionSummary({ entityId: 'light.l', brightnessPct: 40, turnOffAtEnd: false }, 'he'), 'בתחילת הטווח: נדלק (40%) · בסופו: נשאר כמו שהוא');
   assert.equal(actionSummary({ entityId: 'switch.s' }, 'en'), 'When a range starts: turns on · when it ends: turns off');
+  assert.equal(actionSummary({ entityId: 'switch.s' }, 'fr'), 'Au début du créneau: s’allume · à sa fin: s’éteint');
+});
+
+test('dayOrder: Monday first where the week starts on Monday', () => {
+  assert.deepEqual(dayOrder('fr'), [1, 2, 3, 4, 5, 6, 0]);
+  assert.deepEqual(dayOrder('he'), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(dayOrder('en'), [0, 1, 2, 3, 4, 5, 6]);
+  // "Weekdays" copies the five weekdays: Mon-Fri for a Monday-first week, Sun-Thu otherwise.
+  assert.deepEqual(dayOrder('fr').slice(0, 5), [1, 2, 3, 4, 5]);
+  assert.deepEqual(dayOrder('en').slice(0, 5), [0, 1, 2, 3, 4]);
+});
+
+test('formatWhen in French', () => {
+  const now = new Date(2026, 0, 4, 9, 0); // Sunday
+  assert.equal(formatWhen(new Date(2026, 0, 4, 16, 5), now, 'fr'), 'aujourd’hui à 16:05');
+  assert.equal(formatWhen(new Date(2026, 0, 5, 6, 0), now, 'fr'), 'demain à 06:00');
+  assert.equal(formatWhen(new Date(2026, 0, 9, 16, 0), now, 'fr'), 'vendredi à 16:00');
 });

@@ -365,3 +365,18 @@ Issues and pull requests are welcome.
 ## License
 
 [MIT](LICENSE)
+
+
+---
+
+## Fork 14Q (v2.3.0-fr.1)
+
+A local fork of yybd/schedule-helper-card for Home Assistant in French. Changes:
+
+- **Français** — full translation (`STRINGS.fr`, `DAY_NAMES.fr`, `VERBS.fr`); `langOf()` returns `fr` when the HA user language starts with `fr`. The editor, dialog texts, day names and action summaries are all translated; Hebrew and English keep upstream behavior.
+- **Monday-first weeks** — `dayOrder(lang)`: days are displayed in the locale's own week order, from `Intl.Locale(lang).weekInfo.firstDay` (HA itself has no first-day setting). `fr` shows lun→dim, `he`/`en` keep Sunday-first. The "weekdays" copy preset copies the actual weekdays (lun–ven for a Monday-first week, not the Israeli sun–jeu).
+- **Week bars fold to today** — the little week bars in each schedule row render only today's line by default; a chevron button (`barsToggle`) expands all seven days, today's line highlighted in the theme's primary colour, other days dimmed.
+- **`allow_delete` option** (default `true` = upstream behavior) — set `allow_delete: false` to hide the delete button in the editor and refuse the delete confirmation. `show_add: false` (upstream) hides "New schedule".
+- New STRINGS keys `expandWeek` / `collapseWeek` in the three languages (he/fr/en).
+
+Merge policy: when yybd publishes a new version, merge upstream into `main`, re-apply this fork's changes, re-check `STRINGS` key parity (`tests/ui-logic.test.mjs` does it via the fr assertions), tag `v2.x.y-fr.N`.

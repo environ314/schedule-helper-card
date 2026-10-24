@@ -13,7 +13,7 @@
  * Custom elements are registered only where `customElements` exists.
  */
 
-export const VERSION = '2.3.0';
+export const VERSION = '2.3.0-fr.1';
 
 // ---------------------------------------------------------------------------- week model
 
@@ -21,12 +21,25 @@ export const VERSION = '2.3.0';
 export const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 export const DAY_NAMES = {
   he: ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'],
+  fr: ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'],
   en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
 };
 export const DAY_SHORT = {
   he: ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'],
+  fr: ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'],
   en: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
 };
+
+/**
+ * The days in the locale's display order: Monday first where the week starts on Monday (e.g. French), Sunday first
+ * otherwise. Home Assistant has no first-day setting of its own; the locale's own convention is the one to follow.
+ */
+export function dayOrder(lang = 'en') {
+  let first = null;
+  try { first = new Intl.Locale(String(lang)).weekInfo?.firstDay ?? null; } catch { /* engine without weekInfo */ }
+  if (!first) first = /^(fr|it|es|de|pt|nl)\b/i.test(String(lang)) ? 'mon' : 'sun';
+  return first === 'mon' ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+}
 
 /** "HH:MM[:SS]" → minutes from midnight. "24:00:00" is 1440, and so is "23:59:59". Minute precision. */
 export function parseBlock(hms) {
@@ -398,9 +411,13 @@ export function parseAutoStart(config) {
 export function startText(start, lang = 'en') {
   if (start?.hoursBefore != null) {
     const n = Number(start.hoursBefore);
-    return lang === 'he' ? (n === 1 ? 'שעה לפני הדלקת הנרות' : `${n} שעות לפני הדלקת הנרות`) : `${n} hour${n === 1 ? '' : 's'} before candle lighting`;
+    if (lang === 'he') return n === 1 ? 'שעה לפני הדלקת הנרות' : `${n} שעות לפני הדלקת הנרות`;
+    if (lang === 'fr') return `${n} heure${n === 1 ? '' : 's'} avant l’allumage des bougies`;
+    return `${n} hour${n === 1 ? '' : 's'} before candle lighting`;
   }
-  return lang === 'he' ? `ב-${start?.at ?? DEFAULT_AUTO_START.at}` : `at ${start?.at ?? DEFAULT_AUTO_START.at}`;
+  if (lang === 'he') return `ב-${start?.at ?? DEFAULT_AUTO_START.at}`;
+  if (lang === 'fr') return `à ${start?.at ?? DEFAULT_AUTO_START.at}`;
+  return `at ${start?.at ?? DEFAULT_AUTO_START.at}`;
 }
 
 /** On a Friday, only when Shabbat is joined by a chag; any other erev (Jewish Calendar's sensor) is erev chag. */
@@ -1006,6 +1023,7 @@ export function deviceSections({ states, display, devices = [], areas = [], doma
 
 const VERBS = {
   he: { on: 'נדלק', open: 'נפתח', close: 'נסגר', off: 'נכבה', pause: 'מושהה', stays: 'נשאר כמו שהוא', play: 'מופעל' },
+  fr: { on: 's’allume', open: 's’ouvre', close: 'se ferme', off: 's’éteint', pause: 'se met en pause', stays: 'reste tel quel', play: 's’allume' },
   en: { on: 'turns on', open: 'opens', close: 'closes', off: 'turns off', pause: 'pauses', stays: 'stays as it is', play: 'turns on' },
 };
 
@@ -1046,6 +1064,157 @@ export function actionOptions(st) {
 // ---------------------------------------------------------------------------- strings
 
 export const STRINGS = {
+  fr: {
+    errName: 'Le planning doit avoir un nom',
+    errReversed: (day) => `${day} : un créneau se termine avant de commencer`,
+    errOverlap: (day) => `${day} : des créneaux se chevauchent`,
+    errNoCalendar: 'Aucun calendrier juif trouvé (Jewish Calendar ou Hebcal) : impossible de savoir quand Shabbat se termine',
+    errNoJewishCalendar: 'Le chag automatique nécessite l’intégration Jewish Calendar de Home Assistant ; Hebcal n’est pas fiable pour les fêtes',
+    addJewishCalendar: 'Ajouter Jewish Calendar →',
+    errNoCandleSensor: 'Un démarrage relatif à l’allumage des bougies nécessite l’intégration Jewish Calendar',
+    schedules: 'Plannings',
+    newSchedule: 'Nouveau planning',
+    onNow: 'Actif',
+    offNow: 'Inactif',
+    starts: 'commence',
+    ends: 'se termine',
+    today: 'aujourd’hui',
+    tomorrow: 'demain',
+    onDay: (day) => day,
+    at: (when, time) => `${when} à ${time}`,
+    yaml: 'Défini en YAML — lecture seule',
+    noSchedules: 'Aucun planning à afficher',
+    automationOff: 'Automatisation désactivée',
+    noAutomation: 'Aucune automatisation',
+    modeIsOff: (m) => `Mode ${m} désactivé`,
+    wontRun: 'Ce planning ne commande rien tant qu’aucune automatisation active ne l’utilise',
+    wontRunShort: 'ne s’exécutera pas',
+    changedElsewhere: 'Ce planning a été modifié ailleurs depuis son ouverture. Enregistrer remplacera cette modification.',
+    loadTheirs: 'Charger la nouvelle version',
+    deletedElsewhere: 'Ce planning a été supprimé ailleurs.',
+    loadSchedulesFailed: 'Impossible de charger les plannings pour modification.',
+    retry: 'Réessayer',
+    loading: 'Chargement…',
+    readOnly: 'Lecture seule — seul un administrateur peut modifier',
+    modeName: { שבת: 'Shabbat', חג: 'Chag' },
+    editSchedule: 'Modifier le planning',
+    name: 'Nom du planning',
+    type: 'Type',
+    regular: 'Normal',
+    modeHint: (m) => `Activé et désactivé en même temps que les autres plannings ${m}, depuis la carte Shabbat & fêtes.`,
+    device: 'Appareil',
+    chooseDevice: 'Choisir un appareil',
+    changeDevice: 'Changer',
+    searchDevice: 'Rechercher un appareil ou une pièce',
+    noArea: 'Sans pièce',
+    noDevices: 'Aucun appareil trouvé',
+    whileActive: 'Mode pendant l’activité',
+    whatItDoes: 'Ce qu’il fait',
+    handEdited: 'L’automatisation de ce planning a été modifiée à la main ; changez son appareil et son action dans Home Assistant.',
+    setTemp: 'Régler une température',
+    brightness: 'Luminosité',
+    turnOffAtEnd: 'Éteindre à la fin',
+    closeAtEnd: 'Fermer à la fin',
+    drives: 'Commande',
+    autoOn: 'Automatisation active',
+    autoOff: 'Automatisation désactivée',
+    drivesNothing: 'Aucune automatisation n’utilise ce planning : il ne commande rien. Choisissez un appareil ci-dessous et la carte créera l’automatisation.',
+    addDevice: 'Appareil à commander',
+    hours: 'Créneaux actifs',
+    addRange: 'Créneau',
+    from: 'De',
+    to: 'À',
+    midnightHint: 'Horloge 24 h ; une fin à 00:00 ou 24:00 signifie jusqu’à minuit',
+    errTime: 'Heure invalide — tapez par ex. 7:30 ou 2330',
+    ok: 'OK',
+    cancel: 'Annuler',
+    copyTo: (day) => `Copier ${day} vers…`,
+    weekdays: 'Jours de semaine',
+    wholeWeek: 'Toute la semaine',
+    copy: 'Copier',
+    copyDays: 'Copier vers d’autres jours',
+    clearAll: 'Tout effacer',
+    save: 'Enregistrer',
+    delete: 'Supprimer',
+    close: 'Fermer',
+    back: 'Retour',
+    deleteQ: 'Supprimer ce planning ?',
+    deleteText: 'L’automatisation créée pour lui sera également supprimée. Celles écrites à la main resteront.',
+    kept: (list) => `Ces automatisations référencent encore le planning supprimé : ${list}`,
+    saveFailed: (e) => `Échec de l’enregistrement : ${e}`,
+    deleteFailed: (e) => `Échec de la suppression : ${e}`,
+    errEmpty: 'Ajoutez au moins un créneau horaire',
+    errDevice: 'Choisissez l’appareil commandé par ce planning',
+    errRange: 'Le créneau se termine avant de commencer',
+    editRange: 'Modifier le créneau',
+    removeRange: 'Supprimer le créneau',
+    hvac: { cool: 'Climatisation', heat: 'Chauffage', heat_cool: 'Auto', auto: 'Auto', dry: 'Déshumidification', fan_only: 'Ventilation' },
+    shabbatAndChag: 'Shabbat & fêtes juives',
+    modeTitle: (m) => (m === 'Chag' ? 'Mode Chag (fête juive)' : `Mode ${m}`),
+    modeEmpty: 'Aucune automatisation dans ce mode pour l’instant',
+    modeOn: (n) => `Actif — ${n} automatisations`,
+    modeOff: 'Inactif',
+    modePartial: (on, n) => `Partiellement actif — ${on} sur ${n}`,
+    modeSwitch: (m) => `Mode ${m}`,
+    scheduleList: 'Plannings',
+    chooseAutomations: 'Choisir des automatisations',
+    automationsIn: (m) => `Automatisations du mode ${m}`,
+    searchAutomation: 'Rechercher une automatisation',
+    noAutomations: 'Aucune automatisation trouvée',
+    autoShabbat: 'Shabbat automatique',
+    autoTitle: { שבת: 'Shabbat automatique', חג: 'Chag automatique' },
+    autoHint: (mode) => (mode === 'שבת'
+      ? 'Active le mode Shabbat le vendredi, avant ses plannings, et le désactive après la fin de Shabbat, une fois tous les plannings de Shabbat terminés.'
+      : 'Active le mode Chag la veille de la fête, avant ses plannings, et le désactive après la fin de la fête, une fois tous les plannings du Chag terminés. Une fête tombant un Shabbat est couverte par le mode Shabbat.'),
+    saved: 'Planning enregistré',
+    createdPartly: (e) => `Le planning et son automatisation ont été créés, mais la dernière étape a échoué : ${e}. Ouvrez le planning pour vérifier son type.`,
+    created: 'Planning créé',
+    namePlaceholder: 'Rempli depuis le nom de l’appareil',
+    atStart: 'Au début du créneau',
+    atEnd: 'à sa fin',
+    startLabel: 'Début',
+    change: 'Modifier',
+    startAtLabel: 'À',
+    hoursBeforeLabel: 'heures avant l’allumage des bougies',
+    errHours: 'Un nombre d’heures entre 0,5 et 12',
+    autoShabbatNotOurs: 'Une automatisation portant ce nom a été écrite à la main ; la carte se contente de l’activer et de la désactiver.',
+    calToday: 'Aujourd’hui',
+    calParasha: 'Paracha',
+    calHoliday: 'Fête',
+    calCandles: 'Allumage des bougies',
+    calHavdalah: 'Havdala',
+    calInEffect: 'Shabbat / fête en cours',
+    selfExcluded: 'Les automatisations automatiques de Shabbat et de Chag ne peuvent pas faire partie d’un mode : elles s’éteindraient elles-mêmes.',
+    edGeneral: 'Général',
+    edTitle: 'Titre',
+    edShowAdd: 'Bouton « Nouveau planning »',
+    edShowModes: 'Afficher Shabbat et les fêtes juives',
+    edShowModesHint: 'La carte affiche le mode de chaque planning et permet de le choisir à l’édition. Par défaut : uniquement si la maison a déjà une étiquette « Shabbat » ou « Chag ».',
+    edDeviceDomains: 'Types d’appareils à planifier',
+    edDeviceDomainsHint: 'Seuls les types cochés apparaissent dans le choix d’appareil.',
+    allTypes: 'Tous',
+    domainName: { light: 'Éclairages', switch: 'Interrupteurs & prises', fan: 'Ventilateurs', cover: 'Volets', climate: 'Climatiseurs', water_heater: 'Chauffe-eau',
+      media_player: 'Lecteurs multimédias', input_boolean: 'Interrupteurs virtuels', vacuum: 'Aspirateurs', siren: 'Sirènes', valve: 'Vannes' },
+    edModeFilter: 'Plannings affichés',
+    edAllSchedules: 'Tous les plannings',
+    edOnlyMode: (m) => `Seulement les plannings ${m}`,
+    edSchedules: 'Plannings sur la carte',
+    edSchedulesHint: 'Cochez les plannings à afficher.',
+    edAll: 'Tous',
+    edNone: 'Aucun',
+    edModes: 'Modes',
+    edShowCalendar: 'Afficher les horaires de Shabbat et des fêtes juives',
+    edDashboard: 'Un tableau de bord Schedule Helper dans la barre latérale',
+    edDashboardHint: 'Crée un nouveau tableau de bord nommé Schedule Helper avec les deux cartes. Les tableaux existants ne sont pas modifiés.',
+    edDashboardCreate: 'Créer le tableau de bord Schedule Helper',
+    edDashboardExists: 'Le tableau de bord existe déjà.',
+    edDashboardCreated: 'Le tableau de bord a été créé ; il est dans la barre latérale.',
+    edDashboardOpen: 'Ouvrir',
+    edHeight: 'Hauteur',
+    edHeightHint: 'Jusqu’à 700px par défaut — ou p. ex. 500px, 60vh, ou auto sans limite',
+    expandWeek: 'Afficher toute la semaine',
+    collapseWeek: 'Afficher aujourd’hui seulement',
+  },
   he: {
     errName: 'צריך שם לתזמון',
     errReversed: (day) => `ביום ${day}: שעת הסיום לפני שעת ההתחלה`,
@@ -1071,6 +1240,8 @@ export const STRINGS = {
     modeIsOff: (m) => `מצב ${m} כבוי`,
     wontRun: 'התזמון לא יפעיל כלום כל עוד אין אוטומציה פעילה שמשתמשת בו',
     wontRunShort: 'לא יפעיל כלום',
+    expandWeek: 'הצג את כל השבוע',
+    collapseWeek: 'הצג רק את היום',
     changedElsewhere: 'התזמון השתנה במקום אחר מאז שנפתח כאן. שמירה תחליף את השינוי ההוא.',
     loadTheirs: 'טען את הגרסה החדשה',
     deletedElsewhere: 'התזמון נמחק במקום אחר.',
@@ -1220,6 +1391,8 @@ export const STRINGS = {
     modeIsOff: (m) => `${m} mode off`,
     wontRun: 'This schedule switches nothing while no automation that uses it is on',
     wontRunShort: 'will not run',
+    expandWeek: 'Show the whole week',
+    collapseWeek: 'Show today only',
     changedElsewhere: 'This schedule was changed elsewhere since you opened it. Saving will replace that change.',
     loadTheirs: 'Load the new version',
     deletedElsewhere: 'This schedule was deleted elsewhere.',
@@ -1357,8 +1530,16 @@ export function cssHeight(value) {
   return /^\d+(\.\d+)?$/.test(v) ? `${v}px` : v;
 }
 
-/** The user's language in HA's profile: Hebrew ('he', or the old 'iw') gets Hebrew; anything else, or none, English. */
-export const langOf = (hass) => (/^(he|iw)\b/.test(String(hass?.locale?.language || hass?.language || 'en')) ? 'he' : 'en');
+/**
+ * The user's language in HA's profile: Hebrew ('he', or the old 'iw') gets Hebrew, French gets French;
+ * anything else, or none, English.
+ */
+export const langOf = (hass) => {
+  const l = String(hass?.locale?.language || hass?.language || 'en');
+  if (/^(he|iw)\b/i.test(l)) return 'he';
+  if (/^fr\b/i.test(l)) return 'fr';
+  return 'en';
+};
 
 /** "היום ב-16:00" / "tomorrow at 16:00" / "ביום שישי ב-16:00". */
 export function formatWhen(date, now = new Date(), lang = 'en') {
@@ -1383,6 +1564,8 @@ const ICONS = {
   clock: 'M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z',
   minus: 'M19,13H5V11H19V13Z',
   back: 'M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z',
+  chevronDown: 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z',
+  chevronUp: 'M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z',
 };
 const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
 
@@ -1623,8 +1806,9 @@ class ScheduleHelperCard extends CardBase {
     if (config?.entities && !Array.isArray(config.entities)) throw new Error('entities must be a list');
     if (config?.hide_entities && !Array.isArray(config.hide_entities)) throw new Error('hide_entities must be a list');
     if (config?.device_domains && !Array.isArray(config.device_domains)) throw new Error('device_domains must be a list');
-    this._config = { show_add: true, ...config };
+    this._config = { show_add: true, allow_delete: true, ...config };
     this._sig = null;
+    this._barsOpen = false;
     this._render();
   }
 
@@ -1820,7 +2004,7 @@ class ScheduleHelperCard extends CardBase {
         </div>
         ${when ? `<div class="when muted small">${esc(when)} · ${esc(t.wontRunShort)}</div>` : ''}
         ${yaml ? `<div class="muted small">${esc(t.yaml)}</div>` : ''}
-        ${week ? `<div class="idle-bars">${weekBarsHtml(week, this._lang)}</div>` : ''}`);
+        ${week ? `<div class="idle-bars">${weekBarsHtml(week, this._lang, this._barsOpen)}</div>` : ''}`);
     }
     return `
       <div class="row ${editable ? 'editable' : ''}" role="listitem" ${editable ? `data-id="${esc(e.entity_id)}" tabindex="0"` : ''}
@@ -1834,7 +2018,7 @@ class ScheduleHelperCard extends CardBase {
         </div>
         ${when ? `<div class="when muted small">${esc(when)}</div>` : ''}
         ${yaml ? `<div class="muted small">${esc(t.yaml)}</div>` : ''}
-        ${week ? weekBarsHtml(week, this._lang) : ''}
+        ${week ? weekBarsHtml(week, this._lang, this._barsOpen) : ''}
       </div>`;
   }
 
@@ -1848,6 +2032,11 @@ class ScheduleHelperCard extends CardBase {
   _onClick(e) {
     const act = e.target.closest?.('[data-act]')?.dataset.act;
     if (act === 'new') return this._openEditor(null);
+    // The week bars fold to today's line by default; the chevron expands them again.
+    if (act === 'barsToggle') {
+      this._barsOpen = !this._barsOpen;
+      return this._render(true);
+    }
     if (act === 'retry') {
       this._weeksError = null;
       return this._loadWeeks();
@@ -2114,7 +2303,7 @@ class ScheduleEditor {
     const head = this.view === 'main'
       ? `<button class="icon-btn" data-act="close" aria-label="${esc(t.close)}" data-focus="close" ${this.saving ? 'disabled' : ''}>${icon('close')}</button>
          <h3 id="dlg-title">${esc(title)}</h3>
-         ${this.isNew ? '' : `<button class="icon-btn" data-act="askDelete" aria-label="${esc(t.delete)}" title="${esc(t.delete)}" ${this.saving ? 'disabled' : ''}>${icon('delete')}</button>`}
+         ${this.isNew || this.card._config?.allow_delete === false ? '' : `<button class="icon-btn" data-act="askDelete" aria-label="${esc(t.delete)}" title="${esc(t.delete)}" ${this.saving ? 'disabled' : ''}>${icon('delete')}</button>`}
          <button class="btn primary" data-act="save" ${this.saving ? 'disabled' : ''}>${this.saving ? '<span class="spinner"></span>' : ''}${esc(t.save)}</button>`
       : `<button class="icon-btn" data-act="back" aria-label="${esc(t.back)}" data-focus="back">${icon('back', 'flip')}</button><h3 id="dlg-title">${esc(this.view === 'picker' ? title : t.deleteQ)}</h3>`;
     const body = this.view === 'picker' ? this.pickerHtml() : this.view === 'confirmDelete' ? this.confirmHtml() : this.mainHtml();
@@ -2179,7 +2368,7 @@ class ScheduleEditor {
         <div class="label row-between"><span>${esc(t.hours)}</span>
           <button class="link" data-act="clear" data-focus="clear">${esc(t.clearAll)}</button></div>
         <div class="muted small">${esc(t.midnightHint)}</div>
-        <div class="days">${DAYS.map((_, i) => this.dayHtml(i)).join('')}</div>
+        <div class="days">${dayOrder(this.lang).map((i) => this.dayHtml(i)).join('')}</div>
       </div>`;
   }
 
@@ -2254,6 +2443,7 @@ class ScheduleEditor {
   dayHtml(i) {
     const t = this.t;
     const name = DAY_NAMES[this.lang][i];
+    const today = new Date().getDay();
     const blocks = this.week.days[DAYS[i]];
     const chips = blocks.map((b, k) => `<span class="range"><button data-act="edit" data-day="${i}" data-index="${k}" dir="ltr"
         aria-label="${esc(`${t.editRange} ${name} ${blockLabel(b)}`)}" data-focus="edit-${i}-${k}">${esc(blockLabel(b))}</button><button
@@ -2284,7 +2474,7 @@ class ScheduleEditor {
         <div class="actions"><button class="btn" data-act="copyCancel">${esc(t.cancel)}</button><button class="btn primary" data-act="copyOk">${esc(t.copy)}</button></div>
       </div>`;
     }
-    return `<div class="day">
+    return `<div class="day${i === today ? ' today' : ''}">
       <div class="day-line">
         <span class="dname">${esc(name)}</span>
         <div class="ranges">${chips}<button class="add" data-act="add" data-day="${i}" data-focus="add-${i}" aria-label="${esc(`${t.addRange} ${name}`)}">+ ${esc(t.addRange)}</button></div>
@@ -2343,7 +2533,7 @@ class ScheduleEditor {
       case 'close': return this.close();
       case 'back': return this.back();
       case 'save': return this.save();
-      case 'askDelete': this.view = 'confirmDelete'; this.error = ''; break;
+      case 'askDelete': if (this.card._config?.allow_delete === false) break; this.view = 'confirmDelete'; this.error = ''; break;
       case 'doDelete': return this.remove();
       case 'reloadRemote':
         // Starts again from the version saved elsewhere: what was changed here is dropped.
@@ -2414,7 +2604,7 @@ class ScheduleEditor {
         break;
       }
       case 'copyOpen': this.copyFrom = { day, chosen: new Set() }; this.rangeEdit = null; this.focusPanel = true; break;
-      case 'copyPreset': for (const k of el.dataset.v === 'weekdays' ? [0, 1, 2, 3, 4] : [0, 1, 2, 3, 4, 5, 6]) this.copyFrom.chosen.add(k); break;
+      case 'copyPreset': { const order = dayOrder(this.lang); for (const k of el.dataset.v === 'weekdays' ? order.slice(0, 5) : order) this.copyFrom.chosen.add(k); } break;
       case 'copyCancel': this.copyFrom = null; break;
       case 'copyOk': {
         const from = w.days[DAYS[this.copyFrom.day]];
@@ -2608,6 +2798,8 @@ const EDITOR_STYLE = `
   .days { display: flex; flex-direction: column; }
   .day { border-bottom: 1px solid var(--divider-color); padding: 6px 0; }
   .day:last-child { border-bottom: 0; }
+  .day.today { background: color-mix(in srgb, var(--primary-color) 6%, transparent); border-radius: 8px; }
+  .day.today .dname { color: var(--primary-color); font-weight: 600; }
   .day-line { display: flex; align-items: center; gap: 8px; }
   .day-line .dname { width: 52px; flex: none; font-size: 14px; }
   dialog.editor[dir=ltr] .day-line .dname { width: 88px; } /* "Wednesday" */
@@ -2644,14 +2836,26 @@ const EDITOR_STYLE = `
   @keyframes spin { to { transform: rotate(360deg); } }
 `;
 
-/** Seven thin bars, one per day, Sunday first; the time axis always runs left to right. */
-function weekBarsHtml(week, lang) {
-  const names = DAY_NAMES[lang];
-  return `<div class="bars" dir="ltr">${DAYS.map((d, i) => `
-    <div class="bar-row" title="${esc(names[i])}: ${esc(week.days[d].map(blockLabel).join(', ') || '—')}">
-      <span class="bar-day">${esc(DAY_SHORT[lang][i])}</span>
+/**
+ * Thin day bars, in the locale's week order (Monday first where it belongs). Collapsed by default: only today's line;
+ * expanded: all seven, today's line in its own colour. The time axis always runs left to right.
+ */
+function weekBarsHtml(week, lang, open = false, now = new Date()) {
+  const t = STRINGS[lang] || STRINGS.en;
+  const names = DAY_NAMES[lang] || DAY_NAMES.en;
+  const short = DAY_SHORT[lang] || DAY_SHORT.en;
+  const order = dayOrder(lang);
+  const today = now.getDay();
+  const shown = open ? order : [today];
+  return `<div class="bars" dir="ltr">
+    <div class="bars-head"><button class="bars-toggle" data-act="barsToggle" aria-expanded="${open}"
+      aria-label="${esc(open ? t.collapseWeek : t.expandWeek)}" title="${esc(open ? t.collapseWeek : t.expandWeek)}">${icon(open ? 'chevronUp' : 'chevronDown')}</button></div>
+    ${shown.map((i) => { const d = DAYS[i]; return `
+    <div class="bar-row ${i === today ? 'today' : ''}" title="${esc(names[i])} : ${esc(week.days[d].map(blockLabel).join(', ') || '—')}">
+      <span class="bar-day">${esc(short[i])}</span>
       <span class="bar">${week.days[d].map((b) => `<i style="left:${(b.start / 14.4).toFixed(2)}%;width:${((b.end - b.start) / 14.4).toFixed(2)}%"></i>`).join('')}</span>
-    </div>`).join('')}</div>`;
+    </div>`; }).join('')}
+  </div>`;
 }
 
 const SCHEDULE_STYLE = `
@@ -2670,10 +2874,19 @@ const SCHEDULE_STYLE = `
   .idle-bars { opacity: .45; }
   .when { margin: 2px 16px 0; }
   .bars { margin: 8px 16px 0; display: flex; flex-direction: column; gap: 3px; }
+  .bars-head { display: flex; justify-content: flex-end; margin: -4px 0; }
+  .bars-toggle { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 22px; padding: 0;
+    border: 0; border-radius: 8px; background: transparent; color: var(--secondary-text-color); cursor: pointer; flex: none; }
+  .bars-toggle:hover { background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
+  .bars-toggle .ic { width: 16px; height: 16px; }
   .bar-row { display: flex; align-items: center; gap: 6px; }
-  .bar-day { width: 16px; font-size: 10px; color: var(--secondary-text-color); text-align: center; flex: none; }
+  .bar-day { width: 22px; font-size: 10px; color: var(--secondary-text-color); text-align: center; flex: none; }
   .bar { position: relative; flex: 1; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--divider-color) 70%, transparent); overflow: hidden; }
   .bar i { position: absolute; top: 0; bottom: 0; background: var(--primary-color); border-radius: 3px; }
+  .bar-row.today .bar-day { color: var(--primary-color); font-weight: 600; }
+  .bar-row.today .bar { background: color-mix(in srgb, var(--primary-color) 22%, transparent); }
+  .bar-row.today .bar i { background: var(--primary-color); }
+  .bar-row:not(.today) .bar i { background: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color, #9e9e9e)); }
 `;
 
 // ---------------------------------------------------------------------------- schedule-helper-shabbat-card
