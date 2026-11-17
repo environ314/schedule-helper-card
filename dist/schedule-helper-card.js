@@ -13,7 +13,7 @@
  * Custom elements are registered only where `customElements` exists.
  */
 
-export const VERSION = '2.3.0-fr.1';
+export const VERSION = '2.3.0-fr.3';
 
 // ---------------------------------------------------------------------------- week model
 
@@ -615,6 +615,22 @@ export async function automationsFor(hass, entityId) {
   return r?.automation || [];
 }
 
+/**
+ * The `linked_entities` card option, for schedules that HA's search/related cannot see driving anything, because a
+ * sensor or template reads the schedule and an automation follows that sensor (contract §2 stays the card's own).
+ * Accepts a single entity id, a list of them, or a map of schedule entity id → id/list. A plain id or list applies to
+ * every schedule of the card; the map keys it per schedule. Returns {scheduleId|'*': [entityId]} or null.
+ */
+export function linkedEntitiesOf(config) {
+  const raw = config?.linked_entities ?? config?.linked_entity;
+  if (raw == null) return null;
+  const asList = (v) => (typeof v === 'string' ? [v] : Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : null);
+  if (Array.isArray(raw) || typeof raw === 'string') return { '*': asList(raw) ?? [] };
+  if (typeof raw === 'object' && Object.values(raw).every((v) => asList(v)))
+    return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, asList(v)]));
+  throw new Error('linked_entities must be an entity id, a list of them, or a map of schedule id → id/list');
+}
+
 export async function automationConfig(hass, automationEntityId) {
   const r = await hass.callWS({ type: 'automation/config', entity_id: automationEntityId });
   return r?.config ?? null;
@@ -1118,7 +1134,8 @@ export const STRINGS = {
     drives: 'Commande',
     autoOn: 'Automatisation active',
     autoOff: 'Automatisation désactivée',
-    drivesNothing: 'Aucune automatisation n’utilise ce planning : il ne commande rien. Choisissez un appareil ci-dessous et la carte créera l’automatisation.',
+    drivesNothing: 'Aucune automatisation directe détectée. Choisissez un appareil ci-dessous pour en créer une — ou déclarez `linked_entities` dans la config YAML de la carte si un capteur ou un template lit ce planning.',
+    externalDrive: 'Pilotage externe via',
     addDevice: 'Appareil à commander',
     hours: 'Créneaux actifs',
     addRange: 'Créneau',
@@ -1271,7 +1288,8 @@ export const STRINGS = {
     drives: 'מפעיל את',
     autoOn: 'אוטומציה פעילה',
     autoOff: 'אוטומציה כבויה',
-    drivesNothing: 'אף אוטומציה לא משתמשת בתזמון הזה — הוא לא מפעיל כלום. בחרו מכשיר למטה, והכרטיס ייצור את האוטומציה.',
+    drivesNothing: 'לא זוהתה אוטומציה ישירה. בחרו מכשיר למטה כדי ליצור אחת — או הצהירו `linked_entities` בתצורת ה-YAML של הכרטיס אם חיישן או תבנית קוראים את התזמון הזה.',
+    externalDrive: 'בקרה חיצונית באמצעות',
     addDevice: 'מכשיר להפעלה',
     hours: 'שעות פעילות',
     addRange: 'טווח',
@@ -1422,7 +1440,8 @@ export const STRINGS = {
     drives: 'Drives',
     autoOn: 'Automation on',
     autoOff: 'Automation off',
-    drivesNothing: 'No automation uses this schedule, so it drives nothing. Choose a device below and the card creates the automation.',
+    drivesNothing: 'No direct automation detected. Choose a device below to create one — or declare `linked_entities` in the card’s YAML config if a sensor or template reads this schedule.',
+    externalDrive: 'External control via',
     addDevice: 'Device to switch',
     hours: 'Active hours',
     addRange: 'Range',
@@ -1807,6 +1826,7 @@ class ScheduleHelperCard extends CardBase {
     if (config?.hide_entities && !Array.isArray(config.hide_entities)) throw new Error('hide_entities must be a list');
     if (config?.device_domains && !Array.isArray(config.device_domains)) throw new Error('device_domains must be a list');
     this._config = { show_add: true, allow_delete: true, ...config };
+    this._linked = linkedEntitiesOf(config);
     this._sig = null;
     this._barsOpen = false;
     this._render();
@@ -1991,6 +2011,10 @@ class ScheduleHelperCard extends CardBase {
     const editable = canEdit && !yaml && !!editableWeek;
     const when = next && !isNaN(next) ? `${on ? t.ends : t.starts} ${formatWhen(next, now, this._lang)}` : '';
     const idle = this._idleReason(e.entity_id, reg);
+    const linked = this._linkedFor(e.entity_id);
+    const linkedLine = linked.length
+      ? `<div class="muted small">${esc(t.externalDrive)} : ${esc(linked.map((id) => `${entityName(this._hass.states[id]) || id} (${id})`).join(', '))}</div>`
+      : '';
     if (idle) {
       const ownMode = this._modeOf(e.entity_id, reg);
       const label = idle === 'modeOff' ? t.modeIsOff(t.modeName[ownMode]) : t[idle];
@@ -2003,6 +2027,7 @@ class ScheduleHelperCard extends CardBase {
           <span class="state idle" title="${esc(t.wontRun)}">${esc(label)}</span>
         </div>
         ${when ? `<div class="when muted small">${esc(when)} · ${esc(t.wontRunShort)}</div>` : ''}
+        ${linkedLine}
         ${yaml ? `<div class="muted small">${esc(t.yaml)}</div>` : ''}
         ${week ? `<div class="idle-bars">${weekBarsHtml(week, this._lang, this._barsOpen)}</div>` : ''}`);
     }
@@ -2017,6 +2042,7 @@ class ScheduleHelperCard extends CardBase {
           <span class="state ${on ? 'on' : ''}">${esc(on ? t.onNow : t.offNow)}</span>
         </div>
         ${when ? `<div class="when muted small">${esc(when)}</div>` : ''}
+        ${linkedLine}
         ${yaml ? `<div class="muted small">${esc(t.yaml)}</div>` : ''}
         ${week ? weekBarsHtml(week, this._lang, this._barsOpen) : ''}
       </div>`;
@@ -2098,20 +2124,36 @@ class ScheduleHelperCard extends CardBase {
     this._render(true);
   }
 
+  /** The entity ids a schedule is declared to drive indirectly (`linked_entities`): card-wide plus per-schedule. */
+  _linkedFor(entityId) {
+    const m = this._linked;
+    if (!m) return [];
+    return [...new Set([...(m['*'] || []), ...(m[entityId] || [])])];
+  }
+
   /**
    * Why a schedule will not switch anything right now, or null when it will: 'automationOff' (every automation that
    * uses it is off), 'noAutomation' (none uses it), or 'modeOff' (no answer from HA about its automations, but it is in
-   * a mode that is off).
+   * a mode that is off). A declared `linked_entities` indirect drive replaces noAutomation: the schedule then switches
+   * nothing only when one of the declared entities is itself off or unavailable.
    */
   _idleReason(entityId, reg) {
     const states = this._hass.states;
     const drivers = this._drivers?.[entityId];
-    if (drivers) {
+    if (drivers?.length) {
       const known = drivers.filter((a) => states[a]);
-      if (!known.length) return 'noAutomation';
-      return known.some((a) => states[a].state === 'on') ? null : 'automationOff';
+      if (known.length) return known.some((a) => states[a].state === 'on') ? null : 'automationOff';
+      return this._linkedFor(entityId).length ? null : 'noAutomation';
     }
-    if (this._drivers) return null; // loaded, but not for this one yet
+    const linked = this._linkedFor(entityId);
+    if (linked.length) {
+      const unhealthy = linked.filter((id) => {
+        const s = states[id];
+        return s && (s.state === 'unavailable' || s.state === 'unknown' || (id.startsWith('automation.') && s.state === 'off'));
+      });
+      return unhealthy.length ? 'automationOff' : null;
+    }
+    if (this._drivers) return this._drivers[entityId]?.length ? null : 'noAutomation'; // loaded, but not for this one yet
     const mode = this._modeOf(entityId, reg);
     if (!mode) return null;
     const members = modeMembers(states, reg, mode).filter((m) => !isAutoAlias(m.attributes?.friendly_name));
@@ -2237,9 +2279,11 @@ class ScheduleEditor {
     }
   }
 
-  /** An existing schedule that no automation uses: choosing a device creates the automation for it. */
+  /** An existing schedule that no automation uses: choosing a device creates the automation for it. A declared
+   * `linked_entities` indirect drive counts as being driven: no automation to create, no device picker. */
   get attachable() {
-    return !this.isNew && Array.isArray(this.automations) && !this.automations.length && !this.automationsUnknown;
+    return !this.isNew && Array.isArray(this.automations) && !this.automations.length && !this.automationsUnknown
+      && !this.card._linkedFor(this.entityId).length;
   }
 
   /** What the device section describes now. */
@@ -2417,7 +2461,17 @@ class ScheduleEditor {
     const states = this.card._hass.states;
     let inner;
     if (autos === null) inner = `<div class="muted small">${esc(t.loading)}</div>`;
-    else if (!autos.length) inner = `<div class="warn"><span>${esc(t.drivesNothing)}</span></div>`;
+    else if (!autos.length) {
+      const linked = this.card._linkedFor(this.entityId);
+      inner = linked.length
+        ? linked.map((id) => {
+          const s = states[id];
+          const unhealthy = s && (s.state === 'unavailable' || s.state === 'unknown' || (id.startsWith('automation.') && s.state === 'off'));
+          return `<div class="opt"><div class="grow"><div>${esc(t.externalDrive)} : ${esc(entityName(s) || id)}</div>
+          <div class="muted small${unhealthy ? ' warn-text' : ''}">${esc(id)}${unhealthy ? ` — ${esc(id.startsWith('automation.') ? t.autoOff : s.state)}` : ''}</div></div></div>`;
+        }).join('')
+        : `<div class="warn"><span>${esc(t.drivesNothing)}</span></div>`;
+    }
     else {
       inner = autos.map((a) => {
         const on = this.card._stateOf(a) === 'on';
@@ -2793,6 +2847,7 @@ const EDITOR_STYLE = `
   .stepper b { min-width: 40px; text-align: center; font-size: 16px; }
   .warn, .error { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
   .warn { background: color-mix(in srgb, var(--warning-color, #ffa600) 16%, transparent); }
+  .warn-text { color: var(--warning-color, #ffa600); }
   .error { background: color-mix(in srgb, var(--error-color, #db4437) 14%, transparent); color: var(--error-color, #db4437); }
   .error.small { padding: 4px 8px; font-size: 13px; }
   .days { display: flex; flex-direction: column; }
