@@ -13,7 +13,7 @@
  * Custom elements are registered only where `customElements` exists.
  */
 
-export const VERSION = '2.3.0-fr.3';
+export const VERSION = '2.3.0-fr.4';
 
 // ---------------------------------------------------------------------------- week model
 
@@ -2013,7 +2013,7 @@ class ScheduleHelperCard extends CardBase {
     const idle = this._idleReason(e.entity_id, reg);
     const linked = this._linkedFor(e.entity_id);
     const linkedLine = linked.length
-      ? `<div class="muted small">${esc(t.externalDrive)} : ${esc(linked.map((id) => `${entityName(this._hass.states[id]) || id} (${id})`).join(', '))}</div>`
+      ? `<div class="muted small">${esc(t.externalDrive)} : ${esc(linked.map((id) => entityName(this._hass.states[id]) || id).join(', '))}</div>`
       : '';
     if (idle) {
       const ownMode = this._modeOf(e.entity_id, reg);
@@ -2455,30 +2455,37 @@ class ScheduleEditor {
     </div>`;
   }
 
+  /** One automation row of the "Commande" section: name, on/off status, and the working switch. Declared
+   * `linked_entities` automations render exactly like the ones search/related found — the switch handler
+   * keys on `data-id`, so it turns them on and off the same way. */
+  automationRow(a, t) {
+    const states = this.card._hass.states;
+    const on = this.card._stateOf(a) === 'on';
+    return `<div class="opt"><div class="grow"><div>${esc(entityName(states[a]) || a)}</div>
+      <div class="muted small">${esc(on ? t.autoOn : t.autoOff)}</div></div>
+      ${switchHtml({ checked: on, label: entityName(states[a]) || a, attrs: `data-field="auto" data-id="${esc(a)}" data-focus="auto-${esc(a)}"` })}</div>`;
+  }
+
   linkedHtml() {
     const t = this.t;
     const autos = this.automations;
     const states = this.card._hass.states;
     let inner;
     if (autos === null) inner = `<div class="muted small">${esc(t.loading)}</div>`;
-    else if (!autos.length) {
-      const linked = this.card._linkedFor(this.entityId);
-      inner = linked.length
-        ? linked.map((id) => {
-          const s = states[id];
-          const unhealthy = s && (s.state === 'unavailable' || s.state === 'unknown' || (id.startsWith('automation.') && s.state === 'off'));
-          return `<div class="opt"><div class="grow"><div>${esc(t.externalDrive)} : ${esc(entityName(s) || id)}</div>
-          <div class="muted small${unhealthy ? ' warn-text' : ''}">${esc(id)}${unhealthy ? ` — ${esc(id.startsWith('automation.') ? t.autoOff : s.state)}` : ''}</div></div></div>`;
-        }).join('')
-        : `<div class="warn"><span>${esc(t.drivesNothing)}</span></div>`;
-    }
     else {
-      inner = autos.map((a) => {
-        const on = this.card._stateOf(a) === 'on';
-        return `<div class="opt"><div class="grow"><div>${esc(entityName(states[a]) || a)}</div>
-          <div class="muted small">${esc(on ? t.autoOn : t.autoOff)}</div></div>
-          ${switchHtml({ checked: on, label: entityName(states[a]) || a, attrs: `data-field="auto" data-id="${esc(a)}" data-focus="auto-${esc(a)}"` })}</div>`;
-      }).join('');
+      const rows = [...(autos || [])].map((a) => this.automationRow(a, t));
+      const seen = new Set(autos || []);
+      for (const id of this.card._linkedFor(this.entityId)) {
+        if (seen.has(id)) continue; // already shown as a detected automation
+        seen.add(id);
+        if (id.startsWith('automation.')) rows.push(this.automationRow(id, t));
+        else {
+          const s = states[id];
+          rows.push(`<div class="opt"><div class="grow"><div>${esc(entityName(s) || id)}</div>
+          <div class="muted small">${esc(t.externalDrive)} · ${esc(s ? s.state : '')}</div></div></div>`);
+        }
+      }
+      inner = rows.join('') || `<div class="warn"><span>${esc(t.drivesNothing)}</span></div>`;
     }
     return `<div class="label">${esc(t.drives)}</div>${inner}`;
   }
@@ -2486,7 +2493,12 @@ class ScheduleEditor {
   renderLinked() {
     const el = this.dlg?.querySelector('.linked');
     if (!el) return;
-    const sig = JSON.stringify([this.automations, (this.automations || []).map((a) => this.card._stateOf(a))]);
+    const linked = this.card._linkedFor(this.entityId);
+    const sig = JSON.stringify([
+      this.automations,
+      (this.automations || []).map((a) => this.card._stateOf(a)),
+      linked.map((id) => this.card._hass.states[id]?.state),
+    ]);
     if (sig === this._linkedSig) return;
     this._linkedSig = sig;
     const focusKey = this.card._root().activeElement?.dataset?.focus;
